@@ -32,6 +32,20 @@ plugins {
         // E.g. if you have set default_mode to "locked", then
         // you can hide hints in the locked mode by setting this to true
         hide_in_base_mode false // default
+
+        // Optionally style the hints using zjstatus-style format strings.
+        // When unset, the current Zellij theme palette is used automatically.
+        // `{key}` and `{desc}` are replaced with the keybinding and its label.
+        // See the "Styling" section below for the full syntax.
+        key_format  "#[fg=$black,bg=$blue,bold] {key} "
+        desc_format "#[fg=$fg,bg=$bg] {desc} "
+
+        // `$name` colors resolve to the matching `color_<name>` option, exactly
+        // like zjstatus color aliases.
+        color_black "#1e1e2e"
+        color_blue  "#89b4fa"
+        color_fg    "#cdd6f4"
+        color_bg    "#313244"
     }
 }
 
@@ -70,10 +84,57 @@ layout {
 - `overflow_str`: String to append when truncated (default: "...")
 - `pipe_name`: Name of the pipe for zjstatus integration (default: "zjstatus_hints")
 - `hide_in_base_mode`: Hide hints in base mode (a.k.a. default mode) (default: false)
+- `key_format`: Format string for the keybinding portion of each hint (default: unset — use theme palette)
+- `desc_format`: Format string for the description portion of each hint (default: unset — use theme palette)
+- `color_<name>`: Define a color alias referenced as `$name` in the format strings above
+
+## Styling
+
+Each hint is rendered in two parts: the **key** (e.g. `Ctrl + p`) and its
+**description** (e.g. `pane`). By default both are styled from the active Zellij
+theme palette so they blend in with the rest of your status bar.
+
+To customize them, set `key_format` and/or `desc_format`. These use the same
+format-string syntax as any other [zjstatus](https://github.com/dj95/zjstatus)
+widget, so styling hints works just like styling `{mode}`, `{tabs}`, and friends:
+
+- Wrap styling directives in `#[...]`; everything after a block is painted with
+  that style until the next block.
+- `{key}` and `{desc}` are placeholders substituted with the keybinding text and
+  its label, respectively.
+- If either option is unset (or empty), that part falls back to the theme palette,
+  so you can restyle just the keys, just the descriptions, or both.
+
+```kdl
+key_format  "#[fg=$black,bg=$blue,bold] {key} "
+desc_format "#[fg=#cdd6f4,bg=#313244,italic] {desc} "
+```
+
+### Directives
+
+Inside `#[...]`, comma-separate any of the following:
+
+- `fg=<color>` — foreground color
+- `bg=<color>` — background color
+- Effects: `bold`, `italic`, `underscore`, `blink`, `dim`, `strikethrough`, `reverse`, `hidden`
+
+### Colors
+
+`<color>` accepts the same forms as zjstatus:
+
+- `#RRGGBB` — hex RGB (e.g. `#89b4fa`)
+- A named color: `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`,
+  `white`, and their `bright_*` variants
+- `0`–`255` (or `colour<N>`) — an ANSI 256 color index
+- `$name` — a color alias, resolved from the matching `color_<name>` option
+
+> Note: directives zjstatus supports but the hint renderer cannot express
+> (e.g. `us=` underline colors and the fancy underline variants) are accepted
+> and ignored, so a palette shared with zjstatus never errors.
 
 ## TODO
 
-- [ ] configurable colors/formatting
+- [x] configurable colors/formatting
 - [ ] more advanced mode-specific configuration
 - [ ] improved handling of long outputs
 - [ ] ability to enable/disable specific hints
