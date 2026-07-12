@@ -42,6 +42,7 @@ const DEFAULT_PIPE_NAME: &str = "zjstatus_hints";
 
 const CONFIG_KEY_FORMAT: &str = "key_format";
 const CONFIG_DESC_FORMAT: &str = "desc_format";
+const CONFIG_KEY_ALIAS_PREFIX: &str = "key_alias_";
 
 type ActionLabel = (Action, &'static str);
 type ActionSequenceLabel = (&'static [Action], &'static str);
@@ -350,28 +351,77 @@ fn format_modifier_string(modifiers: &[KeyModifier]) -> String {
 fn format_key_display(
     key_bindings: &[KeyWithModifier],
     common_modifiers: &[KeyModifier],
+    config: &BTreeMap<String, String>,
 ) -> Vec<String> {
     key_bindings
         .iter()
         .map(|key| {
-            if common_modifiers.is_empty() {
-                format!("{}", key)
+            let unique_modifiers = key
+                .key_modifiers
+                .iter()
+                .filter(|m| !common_modifiers.contains(m))
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let bare = format_bare_key(&key.bare_key, config);
+            if unique_modifiers.is_empty() {
+                bare
             } else {
-                let unique_modifiers = key
-                    .key_modifiers
-                    .iter()
-                    .filter(|m| !common_modifiers.contains(m))
-                    .map(|m| m.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                if unique_modifiers.is_empty() {
-                    format!("{}", key.bare_key)
-                } else {
-                    format!("{} {}", unique_modifiers, key.bare_key)
-                }
+                format!("{} {}", unique_modifiers, bare)
             }
         })
         .collect()
+}
+
+/// Render a bare key, substituting a configured alias symbol when one is set.
+/// Without an alias this is exactly the key's normal Zellij representation
+/// (e.g. `ENTER`, `ESC`, `←`), so behavior is unchanged unless configured.
+fn format_bare_key(bare_key: &BareKey, config: &BTreeMap<String, String>) -> String {
+    key_alias(bare_key, config).unwrap_or_else(|| bare_key.to_string())
+}
+
+/// Look up a configured symbol for `bare_key`. Aliases are set via
+/// `key_alias_<name>` options (mirroring zjstatus's `color_<name>` aliases),
+/// where `<name>` is a lowercase key name, e.g. `key_alias_enter "↵"`. Several
+/// common keys accept a short synonym (e.g. `esc`/`escape`); the first name
+/// with a configured value wins.
+fn key_alias(bare_key: &BareKey, config: &BTreeMap<String, String>) -> Option<String> {
+    key_alias_names(bare_key).into_iter().find_map(|name| {
+        config
+            .get(&format!("{}{}", CONFIG_KEY_ALIAS_PREFIX, name))
+            .cloned()
+    })
+}
+
+/// The accepted `key_alias_<name>` names for a bare key, in priority order.
+fn key_alias_names(bare_key: &BareKey) -> Vec<String> {
+    let names: &[&str] = match bare_key {
+        BareKey::Enter => &["enter", "return"],
+        BareKey::Esc => &["esc", "escape"],
+        BareKey::Tab => &["tab"],
+        BareKey::Char(' ') => &["space"],
+        BareKey::Backspace => &["backspace"],
+        BareKey::Delete => &["delete", "del"],
+        BareKey::Insert => &["insert", "ins"],
+        BareKey::Home => &["home"],
+        BareKey::End => &["end"],
+        BareKey::PageUp => &["pageup", "pgup"],
+        BareKey::PageDown => &["pagedown", "pgdn"],
+        BareKey::Up => &["up"],
+        BareKey::Down => &["down"],
+        BareKey::Left => &["left"],
+        BareKey::Right => &["right"],
+        BareKey::CapsLock => &["capslock"],
+        BareKey::ScrollLock => &["scrolllock"],
+        BareKey::NumLock => &["numlock"],
+        BareKey::PrintScreen => &["printscreen"],
+        BareKey::Pause => &["pause"],
+        BareKey::Menu => &["menu"],
+        BareKey::F(n) => return vec![format!("f{}", n)],
+        // Any other character can be aliased by the character itself.
+        BareKey::Char(c) => return vec![c.to_lowercase().to_string()],
+    };
+    names.iter().map(|s| s.to_string()).collect()
 }
 
 fn get_key_separator(key_display: &[String]) -> &'static str {
@@ -386,6 +436,7 @@ fn get_key_separator(key_display: &[String]) -> &'static str {
 fn style_key_with_modifier(
     key_bindings: &[KeyWithModifier],
     palette: &Styling,
+    config: &BTreeMap<String, String>,
 ) -> Vec<ANSIString<'static>> {
     if key_bindings.is_empty() {
         return vec![];
@@ -397,7 +448,7 @@ fn style_key_with_modifier(
 
     let common_modifiers = get_common_modifiers(key_bindings.iter().collect());
     let modifier_str = format_modifier_string(&common_modifiers);
-    let key_display = format_key_display(key_bindings, &common_modifiers);
+    let key_display = format_key_display(key_bindings, &common_modifiers, config);
     let key_separator = get_key_separator(&key_display);
 
     styled_parts.push(Style::new().paint(" "));
@@ -441,14 +492,14 @@ fn style_key_with_modifier(
 /// hint, e.g. `Ctrl + p`, `h|j|k|l`, or `←↓↑→`. This is the value substituted
 /// for the `{key}` placeholder when a custom `key_format` is configured; the
 /// styling itself is left to the format string.
-fn compose_key_text(key_bindings: &[KeyWithModifier]) -> String {
+fn compose_key_text(key_bindings: &[KeyWithModifier], config: &BTreeMap<String, String>) -> String {
     if key_bindings.is_empty() {
         return String::new();
     }
 
     let common_modifiers = get_common_modifiers(key_bindings.iter().collect());
     let modifier_str = format_modifier_string(&common_modifiers);
-    let key_display = format_key_display(key_bindings, &common_modifiers);
+    let key_display = format_key_display(key_bindings, &common_modifiers, config);
     let key_separator = get_key_separator(&key_display);
     let keys = key_display.join(key_separator);
 
@@ -508,14 +559,14 @@ fn add_hint(
     // `{key}` placeholder) takes precedence over the theme-palette default.
     match style.key_format {
         Some(fmt) => {
-            let key_text = compose_key_text(keys);
+            let key_text = compose_key_text(keys, style.config);
             parts.extend(format::render_template(
                 fmt,
                 &[("key", &key_text)],
                 style.config,
             ));
         }
-        None => parts.extend(style_key_with_modifier(keys, style.colors)),
+        None => parts.extend(style_key_with_modifier(keys, style.colors, style.config)),
     }
 
     // Description part: likewise overridable via `desc_format` with a `{desc}`

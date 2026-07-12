@@ -46,6 +46,12 @@ plugins {
         color_blue  "#89b4fa"
         color_fg    "#cdd6f4"
         color_bg    "#313244"
+
+        // Optionally replace key names with symbols, e.g. show ENTER as ↵.
+        // Uses the same per-line alias pattern (see "Key aliases" below).
+        key_alias_enter "↵"
+        key_alias_space "␣"
+        key_alias_esc   "⎋"
     }
 }
 
@@ -87,6 +93,7 @@ layout {
 - `key_format`: Format string for the keybinding portion of each hint (default: unset — use theme palette)
 - `desc_format`: Format string for the description portion of each hint (default: unset — use theme palette)
 - `color_<name>`: Define a color alias referenced as `$name` in the format strings above
+- `key_alias_<name>`: Replace a key's name with a symbol (e.g. `key_alias_enter "↵"`); see [Key aliases](#key-aliases)
 
 ## Styling
 
@@ -131,6 +138,31 @@ Inside `#[...]`, comma-separate any of the following:
 > Note: directives zjstatus supports but the hint renderer cannot express
 > (e.g. `us=` underline colors and the fancy underline variants) are accepted
 > and ignored, so a palette shared with zjstatus never errors.
+
+### Key aliases
+
+By default keys are rendered with their Zellij names (`ENTER`, `ESC`, `TAB`,
+`SPACE`, `←`, …). Replace any of them with a symbol using `key_alias_<name>`
+options — the same per-line alias pattern as `color_<name>`:
+
+```kdl
+key_alias_enter     "↵"
+key_alias_space     "␣"
+key_alias_esc       "⎋"
+key_alias_tab       "⇥"
+key_alias_backspace "⌫"
+key_alias_left      "←"
+```
+
+- `<name>` is the lowercase key name. Aliases apply everywhere the key appears,
+  including inside the `{key}` placeholder of a custom `key_format`.
+- Keys without an alias keep their default representation, so you only need to
+  set the ones you want to change.
+- Recognized names: `enter` (`return`), `esc` (`escape`), `tab`, `space`,
+  `backspace`, `delete` (`del`), `insert` (`ins`), `home`, `end`,
+  `pageup` (`pgup`), `pagedown` (`pgdn`), `up`, `down`, `left`, `right`,
+  `capslock`, `scrolllock`, `numlock`, `printscreen`, `pause`, `menu`,
+  `f1`–`f12`, and any single character (e.g. `key_alias_x`).
 
 ## TODO
 
