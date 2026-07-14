@@ -33,6 +33,13 @@ plugins {
         // you can hide hints in the locked mode by setting this to true
         hide_in_base_mode false // default
 
+        // Show every enabled keybinding in each mode, not just the curated set.
+        // Set to false to show only the curated hints. See "Discovered hints".
+        discover_hints true // default
+        // Override or set the label for a discovered action (snake_case name);
+        // an empty value hides it. See "Discovered hints" below.
+        label_switch_to_mode_locked "lock"
+
         // Optionally style the hints using zjstatus-style format strings.
         // When unset, the current Zellij theme palette is used automatically.
         // `{key}` and `{desc}` are replaced with the keybinding and its label.
@@ -90,10 +97,12 @@ layout {
 - `overflow_str`: String to append when truncated (default: "...")
 - `pipe_name`: Name of the pipe for zjstatus integration (default: "zjstatus_hints")
 - `hide_in_base_mode`: Hide hints in base mode (a.k.a. default mode) (default: false)
+- `discover_hints`: Show **every** enabled keybinding in each mode, not just the curated set (default: true); see [Discovered hints](#discovered-hints)
 - `key_format`: Format string for the keybinding portion of each hint (default: unset — use theme palette)
 - `desc_format`: Format string for the description portion of each hint (default: unset — use theme palette)
 - `color_<name>`: Define a color alias referenced as `$name` in the format strings above
 - `key_alias_<name>`: Replace a key's name with a symbol (e.g. `key_alias_enter "↵"`); see [Key aliases](#key-aliases)
+- `label_<action>`: Override or set the label for a discovered action (e.g. `label_new_pane "new"`); see [Discovered hints](#discovered-hints)
 
 ## Styling
 
@@ -164,12 +173,56 @@ key_alias_left      "←"
   `capslock`, `scrolllock`, `numlock`, `printscreen`, `pause`, `menu`,
   `f1`–`f12`, and any single character (e.g. `key_alias_x`).
 
+## Discovered hints
+
+By default the plugin shows **every keybinding that is actually enabled in the
+current mode**, so the hints always reflect your real config — including custom
+binds and the many default bindings the original curated list omitted (e.g. the
+`Alt-*` quick keys and `lock` in Normal mode).
+
+It works in two passes:
+
+1. A curated set of common actions is rendered first, with hand-tuned labels and
+   ordering (this is the polished default look).
+2. Every *other* enabled keybinding is then discovered and appended. Keys that
+   resolve to the same label are grouped into a single hint (so, e.g., the four
+   directional focus keys collapse into one `move` hint).
+
+Set `discover_hints false` to disable the second pass and show only the curated
+set.
+
+### Labels
+
+Each discovered binding is labeled by resolving, in order:
+
+1. A `label_<action>` config override, if set.
+2. A built-in label for common actions (`new_pane` → "new", `move_focus` →
+   "move", `toggle_pane_frames` → "frames", …).
+3. A fallback derived from the action name itself (`next_swap_layout` →
+   "next swap layout"), so nothing is ever left unlabeled.
+
+`<action>` is the action's snake_case name; mode switches include the target
+mode. Examples:
+
+```kdl
+label_switch_to_mode_locked "lock"    // relabel the lock keybinding
+label_new_pane              "new"
+label_move_focus            "focus"
+label_go_to_tab             "tab"
+label_next_swap_layout      "»"       // give a custom glyph
+label_toggle_mouse_mode     ""        // empty string hides this hint
+```
+
+An empty value (`label_<action> ""`) hides that action's hint. To find an
+action's name for a key you have bound, note the action from your Zellij config
+and convert it to snake_case (e.g. `MoveTab` → `move_tab`).
+
 ## TODO
 
 - [x] configurable colors/formatting
-- [ ] more advanced mode-specific configuration
+- [x] more advanced mode-specific configuration
 - [ ] improved handling of long outputs
-- [ ] ability to enable/disable specific hints
+- [x] ability to enable/disable specific hints
 
 ## License
 
