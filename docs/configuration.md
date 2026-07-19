@@ -1,0 +1,28 @@
+# Configuration
+
+Every option the plugin reads, with its default. Follow the links for the detail behind each group.
+
+- `max_length`: Hard cap on the hint line's width in columns (default: 0 = unlimited); see [Fitting the bar](fitting.md#fitting-the-bar)
+- `auto_width`: Fit the hints to the terminal width (default: `true`); see [Fitting the bar](fitting.md#fitting-the-bar)
+- `reserve_columns`: Columns to leave free for the rest of the status bar (default: 0)
+- `ambiguous_width`: Columns an East Asian Ambiguous character occupies — `1` or `2` (default: `1`); see [Fitting the bar](fitting.md#fitting-the-bar)
+- `overflow_str`: Appended when a lone hint is too wide to fit and must be cut mid-hint (default: "..."); see [What gets dropped](fitting.md#what-gets-dropped)
+- `pipe_name`: Name of the pipe for zjstatus integration (default: "zjstatus_hints")
+- `hide_in_base_mode`: Hide hints in base mode (a.k.a. default mode) (default: false)
+- `discover_hints`: Also show every enabled keybinding beyond the [curated list](hints.md#the-curated-list) (default: false); see [Discovered hints](hints.md#discovered-hints)
+- `hide_shared_hints`: Hide bindings inherited from the base mode so each mode only shows what is new in it (default: true); see [Shared bindings](hints.md#shared-bindings)
+- `direction_keys`: Which keys to show when a hint is bound to both `hjkl` and the arrows — `both`, `arrows`, or `letters` (default: `both`); see [Direction keys](ordering.md#direction-keys)
+- `key_order`: How keys within a hint are ordered — `qwerty`, `dvorak`, `colemak`, `abcdef`, or `none` (default: `qwerty`); see [Key order](ordering.md#key-order)
+- `hint_order`: Comma-separated hint ids pinned to the start or end of each mode, around a `*` for everything else (default: unset); see [Hint order](ordering.md#hint-order)
+- `key_format`: Format string for the keybinding portion of each hint (default: unset — use theme palette)
+- `desc_format`: Format string for the description portion of each hint (default: unset — use theme palette)
+- `hint_spacer`: Format string drawn between consecutive hints (default: unset — hints sit adjacent); see [Spacing](styling.md#spacing)
+- `drop_indicator`: Format string marking where hints were dropped to fit the window (default: unset — the gap is unmarked); see [What gets dropped](fitting.md#what-gets-dropped)
+- `hint_precedence`: Which pinned group is kept longest — `tl` or `lt` (default: `tl`); see [What gets dropped](fitting.md#what-gets-dropped)
+- `color_<name>`: Define a color alias referenced as `$name` in the format strings above
+- `key_alias_<name>`: Replace a key's name with a symbol (e.g. `key_alias_enter "↵"`); see [Key aliases](styling.md#key-aliases)
+- `mod_alias_<name>`: Replace a modifier's name with a symbol (e.g. `mod_alias_ctrl "^"`); see [Modifier aliases](styling.md#modifier-aliases)
+- `label_<id>`: Override or hide the label of any hint, curated or discovered (e.g. `label_split_down "split ↓"`); see [Labels](labels.md#labels)
+- `label_<mode>_<id>`: The same, scoped to one mode (e.g. `label_locked_mode_normal "unlock"`); see [Per-mode labels](labels.md#per-mode-labels)
+- `key_format_<id>` / `desc_format_<id>`: Format strings for a single hint, overriding the global ones; see [Styling one hint](styling.md#styling-one-hint)
+- `keys_<id>`: Replace a hint's keys with a fixed string (e.g. `keys_go_to_tab "1-9"`); see [Replacing the keys](styling.md#replacing-the-keys)
