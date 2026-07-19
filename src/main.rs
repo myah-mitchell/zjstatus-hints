@@ -2256,3 +2256,923 @@ fn get_keymap_for_mode(mode_info: &ModeInfo) -> Vec<(KeyWithModifier, Vec<Action
         _ => mode_info.get_mode_keybinds(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    /// Sort a string of characters as if they were the keys of one hint, so an
+    /// expected ordering can be written as a plain string literal.
+    fn sorted(chars: &str, order: KeyOrder) -> String {
+        let mut keys: Vec<KeyWithModifier> = chars
+            .chars()
+            .map(|c| KeyWithModifier::new(BareKey::Char(c)))
+            .collect();
+        sort_keys(&mut keys, order);
+        keys.iter()
+            .map(|key| match key.bare_key {
+                BareKey::Char(c) => c,
+                _ => '?',
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_layout_covers_the_alphabet_and_digits_exactly_once() {
+        for order in [KeyOrder::Qwerty, KeyOrder::Dvorak, KeyOrder::Colemak] {
+            let all: String = order.rows().concat();
+            for expected in "abcdefghijklmnopqrstuvwxyz0123456789".chars() {
+                assert_eq!(
+                    all.matches(expected).count(),
+                    1,
+                    "{:?} should place {:?} exactly once",
+                    order.rows(),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn digits_follow_the_digit_row_so_zero_comes_last() {
+        assert_eq!(sorted("271543689", KeyOrder::Qwerty), "123456789");
+        assert_eq!(sorted("0159", KeyOrder::Qwerty), "1590");
+    }
+
+    #[test]
+    fn letters_sort_by_row_then_column() {
+        assert_eq!(sorted("kh", KeyOrder::Qwerty), "hk");
+        assert_eq!(sorted("lkjh", KeyOrder::Qwerty), "hjkl");
+        // Rows run top to bottom: q above a above z.
+        assert_eq!(sorted("zaq", KeyOrder::Qwerty), "qaz");
+    }
+
+    #[test]
+    fn letters_group_ahead_of_punctuation_rather_than_interleaving() {
+        assert_eq!(sorted("op\\as", KeyOrder::Qwerty), "opas\\");
+    }
+
+    #[test]
+    fn digits_letters_and_punctuation_stay_in_separate_groups() {
+        assert_eq!(sorted("a1/", KeyOrder::Qwerty), "1a/");
+        assert_eq!(sorted("/1a", KeyOrder::Qwerty), "1a/");
+    }
+
+    #[test]
+    fn layout_changes_where_letters_land() {
+        // hjkl only reads in order on the layout it was designed for. Dvorak
+        // scatters it across all three rows — l on the top, h on the home row,
+        // j and k down on the bottom — so the vim ordering is lost.
+        assert_eq!(sorted("hjkl", KeyOrder::Qwerty), "hjkl");
+        assert_eq!(sorted("hjkl", KeyOrder::Dvorak), "lhjk");
+        assert_eq!(sorted("arst", KeyOrder::Colemak), "arst");
+    }
+
+    #[test]
+    fn alphabetical_ignores_the_keyboard_layout() {
+        assert_eq!(sorted("dbca", KeyOrder::Alphabetical), "abcd");
+        // The layout modes would order these by position instead.
+        assert_eq!(sorted("lkjh", KeyOrder::Alphabetical), "hjkl");
+        assert_eq!(sorted("zaq", KeyOrder::Alphabetical), "aqz");
+        assert_eq!(sorted("qaz", KeyOrder::Qwerty), "qaz");
+    }
+
+    #[test]
+    fn alphabetical_puts_zero_first_unlike_the_digit_row() {
+        // Plain ascending order, so `0` leads rather than trailing `9`.
+        assert_eq!(sorted("0159", KeyOrder::Alphabetical), "0159");
+        assert_eq!(sorted("0159", KeyOrder::Qwerty), "1590");
+    }
+
+    #[test]
+    fn alphabetical_still_groups_digits_letters_and_punctuation() {
+        assert_eq!(sorted("/a1", KeyOrder::Alphabetical), "1a/");
+    }
+
+    #[test]
+    fn unsorted_preserves_the_order_zellij_reported() {
+        assert_eq!(sorted("271543689", KeyOrder::Unsorted), "271543689");
+        assert_eq!(sorted("op\\as", KeyOrder::Unsorted), "op\\as");
+    }
+
+    #[test]
+    fn arrows_follow_hjkl_order_not_declaration_order() {
+        let mut keys: Vec<KeyWithModifier> =
+            [BareKey::Right, BareKey::Up, BareKey::Left, BareKey::Down]
+                .into_iter()
+                .map(KeyWithModifier::new)
+                .collect();
+        sort_keys(&mut keys, KeyOrder::Qwerty);
+        let bare: Vec<BareKey> = keys.iter().map(|k| k.bare_key.clone()).collect();
+        assert_eq!(
+            bare,
+            vec![BareKey::Left, BareKey::Down, BareKey::Up, BareKey::Right]
+        );
+    }
+
+    #[test]
+    fn function_keys_sort_numerically_not_lexically() {
+        let mut keys: Vec<KeyWithModifier> = [10u8, 2, 1]
+            .into_iter()
+            .map(|n| KeyWithModifier::new(BareKey::F(n)))
+            .collect();
+        sort_keys(&mut keys, KeyOrder::Qwerty);
+        let bare: Vec<BareKey> = keys.iter().map(|k| k.bare_key.clone()).collect();
+        assert_eq!(bare, vec![BareKey::F(1), BareKey::F(2), BareKey::F(10)]);
+    }
+
+    #[test]
+    fn modifier_groups_run_unmodified_then_ctrl_super_alt_shift() {
+        let plain = KeyWithModifier::new(BareKey::Char('a'));
+        let mut keys = vec![
+            plain.clone().with_shift_modifier(),
+            plain.clone().with_alt_modifier(),
+            plain.clone(),
+            plain.clone().with_super_modifier(),
+            plain.clone().with_ctrl_modifier(),
+        ];
+        sort_keys(&mut keys, KeyOrder::Qwerty);
+        // Assert the modifiers themselves, not just that the ranks ascend —
+        // ascending ranks would hold for any ordering.
+        let groups: Vec<Vec<KeyModifier>> = keys
+            .iter()
+            .map(|key| key.key_modifiers.iter().copied().collect())
+            .collect();
+        assert_eq!(
+            groups,
+            vec![
+                vec![],
+                vec![KeyModifier::Ctrl],
+                vec![KeyModifier::Super],
+                vec![KeyModifier::Alt],
+                vec![KeyModifier::Shift],
+            ]
+        );
+    }
+
+    #[test]
+    fn a_key_sorts_with_the_strongest_modifier_it_carries() {
+        let plain = KeyWithModifier::new(BareKey::Char('p'));
+        let ctrl_shift = plain.clone().with_ctrl_modifier().with_shift_modifier();
+        assert_eq!(modifier_rank(&ctrl_shift.key_modifiers), 1);
+        // Same group as plain Ctrl, but still ordered after it.
+        let ctrl = plain.with_ctrl_modifier();
+        assert_eq!(modifier_rank(&ctrl.key_modifiers), 1);
+        assert!(
+            modifier_tiebreak(&ctrl.key_modifiers) < modifier_tiebreak(&ctrl_shift.key_modifiers)
+        );
+    }
+
+    /// Build hints with the given ids (label mirrors the id unless it contains
+    /// `/`, written as `id/label`), order them, and read back the resulting ids.
+    fn ordered(ids: &[&str], config: &str) -> Vec<String> {
+        let mut hints: Vec<Hint> = ids
+            .iter()
+            .map(|spec| {
+                let (id, label) = spec.split_once('/').unwrap_or((spec, spec));
+                Hint {
+                    id: id.to_string(),
+                    label: label.to_string(),
+                    keys: vec![],
+                }
+            })
+            .collect();
+        let order = HintOrder::from_config(config);
+        if !order.is_empty() {
+            hints.sort_by_key(|hint| order.rank(hint));
+        }
+        hints.into_iter().map(|hint| hint.id).collect()
+    }
+
+    #[test]
+    fn wildcard_splits_pinned_front_from_pinned_back() {
+        assert_eq!(
+            ordered(&["a", "b", "c", "d"], "d, *, a"),
+            vec!["d", "b", "c", "a"]
+        );
+    }
+
+    #[test]
+    fn entries_before_the_wildcard_lead_in_the_order_given() {
+        assert_eq!(ordered(&["a", "b", "c"], "c, b, *"), vec!["c", "b", "a"]);
+    }
+
+    #[test]
+    fn entries_after_the_wildcard_trail_in_the_order_given() {
+        assert_eq!(ordered(&["a", "b", "c"], "*, b, a"), vec!["c", "b", "a"]);
+    }
+
+    #[test]
+    fn a_list_without_a_wildcard_leads_and_the_rest_follow() {
+        assert_eq!(ordered(&["a", "b", "c"], "c, a"), vec!["c", "a", "b"]);
+    }
+
+    #[test]
+    fn unlisted_hints_keep_the_order_the_mode_built_them() {
+        assert_eq!(
+            ordered(&["a", "b", "c", "d", "e"], "e, *"),
+            vec!["e", "a", "b", "c", "d"]
+        );
+    }
+
+    #[test]
+    fn an_empty_or_absent_order_changes_nothing() {
+        assert_eq!(ordered(&["b", "a"], ""), vec!["b", "a"]);
+        assert_eq!(ordered(&["b", "a"], "  ,  "), vec!["b", "a"]);
+    }
+
+    #[test]
+    fn naming_an_absent_hint_is_harmless() {
+        assert_eq!(ordered(&["a", "b"], "nope, *, alsonope"), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn hints_can_be_named_by_label_as_well_as_id() {
+        // A hint fused by a shared label carries the internal id `=swap layout`;
+        // naming it by the label is what makes it addressable.
+        assert_eq!(
+            ordered(&["a", "=swap layout/swap layout"], "swap layout, *"),
+            vec!["=swap layout", "a"]
+        );
+    }
+
+    #[test]
+    fn matching_ignores_case_and_surrounding_space() {
+        assert_eq!(ordered(&["a", "Quit"], "  QUIT  , *"), vec!["Quit", "a"]);
+    }
+
+    /// Render a mode from a synthetic keymap and return the visible text, so a
+    /// whole hint line can be asserted as a plain string.
+    fn rendered(
+        mode: InputMode,
+        keymap: &[(KeyWithModifier, Vec<Action>)],
+        config: &[(&str, &str)],
+    ) -> String {
+        let colors = Styling::default();
+        let config = label_config(config);
+        let hint_order = HintOrder::from_config(config.get("hint_order").map_or("", |v| v));
+        let mode_key = format!("{:?}", mode).to_lowercase();
+        let style = HintStyle {
+            colors: &colors,
+            key_format: Some("{key} "),
+            desc_format: Some("{desc}"),
+            spacer: Some("|"),
+            discover: config.get("discover_hints").map_or(true, |v| v == "true"),
+            direction_keys: DirectionKeys::from_config(
+                config.get("direction_keys").map_or("both", |v| v),
+            ),
+            key_order: KeyOrder::default(),
+            mode: &mode_key,
+            hint_order: &hint_order,
+            limit: config.get("limit").and_then(|v| v.parse::<usize>().ok()),
+            drop_indicator: config.get("drop_indicator").map(|v| v.as_str()),
+            precedence: HintPrecedence::from_config(
+                config.get("hint_precedence").map_or("", |v| v),
+            ),
+            wide_ambiguous: config
+                .get("ambiguous_width")
+                .map(|v| v == "2")
+                .unwrap_or(false),
+            shared: &[],
+            config: &config,
+        };
+        let parts = render_hints_for_mode(mode, keymap, &style);
+        let text = format!("{}", ANSIStrings(&parts));
+        let mut parser = AnsiParser::new(&text);
+        let mut visible = String::new();
+        while let Some(segment) = parser.next_segment() {
+            if let AnsiSegment::VisibleChar(ch) = segment {
+                visible.push(ch);
+            }
+        }
+        visible
+    }
+
+    fn key(bare: BareKey) -> KeyWithModifier {
+        KeyWithModifier::new(bare)
+    }
+
+    fn ctrl(c: char) -> KeyWithModifier {
+        KeyWithModifier::new(BareKey::Char(c)).with_ctrl_modifier()
+    }
+
+    /// `MessagePlugin` in KDL, which parses to this plumbing action.
+    fn message_plugin() -> Action {
+        Action::KeybindPipe {
+            name: None,
+            payload: Some("enable".to_string()),
+            args: None,
+            plugin: Some("autolock".to_string()),
+            plugin_id: None,
+            configuration: None,
+            launch_new: false,
+            skip_cache: false,
+            floating: None,
+            in_place: None,
+            cwd: None,
+            pane_title: None,
+        }
+    }
+
+    #[test]
+    fn a_binding_led_by_a_plumbing_action_still_shows_what_it_does() {
+        // Locked mode's only binding is `MessagePlugin ...; SwitchToMode
+        // "Normal"`. Judging it by its first action alone hid the mode entirely.
+        let keymap = vec![(ctrl('g'), vec![message_plugin(), TO_NORMAL])];
+        assert_eq!(rendered(InputMode::Locked, &keymap, &[]), "Ctrl g normal");
+        assert_eq!(
+            rendered(
+                InputMode::Locked,
+                &keymap,
+                &[("label_locked_mode_normal", "unlock")]
+            ),
+            "Ctrl g unlock"
+        );
+    }
+
+    #[test]
+    fn a_binding_of_pure_plumbing_stays_hidden() {
+        let keymap = vec![(ctrl('g'), vec![message_plugin()])];
+        assert_eq!(rendered(InputMode::Locked, &keymap, &[]), "");
+    }
+
+    /// Tab navigation as Zellij binds it by default: both families, both ways.
+    fn tab_nav_keymap() -> Vec<(KeyWithModifier, Vec<Action>)> {
+        vec![
+            (key(BareKey::Char('h')), vec![Action::GoToPreviousTab]),
+            (key(BareKey::Left), vec![Action::GoToPreviousTab]),
+            (key(BareKey::Char('l')), vec![Action::GoToNextTab]),
+            (key(BareKey::Right), vec![Action::GoToNextTab]),
+        ]
+    }
+
+    #[test]
+    fn tab_focus_honors_direction_keys_and_claims_every_key_it_shows() {
+        // With "letters", the arrows drop out and no stray next/prev hints are
+        // left behind for discovery to resurface.
+        assert_eq!(
+            rendered(
+                InputMode::Tab,
+                &tab_nav_keymap(),
+                &[("direction_keys", "letters")]
+            ),
+            "hl focus"
+        );
+        assert_eq!(
+            rendered(
+                InputMode::Tab,
+                &tab_nav_keymap(),
+                &[("direction_keys", "arrows")]
+            ),
+            "←→ focus"
+        );
+    }
+
+    #[test]
+    fn tab_focus_shows_both_families_by_default() {
+        assert_eq!(
+            rendered(InputMode::Tab, &tab_nav_keymap(), &[]),
+            "hl←→ focus"
+        );
+    }
+
+    #[test]
+    fn every_key_that_leaves_a_mode_forms_one_hint() {
+        // Enter and Esc are bound to the identical action, so they are one hint
+        // rather than a "select" and an "exit" for the same thing.
+        let keymap = vec![
+            (key(BareKey::Enter), vec![TO_NORMAL]),
+            (key(BareKey::Esc), vec![TO_NORMAL]),
+        ];
+        assert_eq!(rendered(InputMode::Pane, &keymap, &[]), "ESCENTER normal");
+        assert_eq!(rendered(InputMode::Tab, &keymap, &[]), "ESCENTER normal");
+    }
+
+    #[test]
+    fn a_mode_keeps_its_exit_hint_without_discovery() {
+        // The curated list has to carry the escape hatch itself, since discovery
+        // is off by default.
+        let keymap = vec![
+            (key(BareKey::Char('x')), vec![Action::CloseFocus, TO_NORMAL]),
+            (key(BareKey::Esc), vec![TO_NORMAL]),
+        ];
+        assert_eq!(
+            rendered(InputMode::Pane, &keymap, &[("discover_hints", "false")]),
+            "x close|ESC normal"
+        );
+    }
+
+    #[test]
+    fn a_mode_scoped_label_reaches_the_rendered_line() {
+        let config = &[
+            ("label_mode_normal", "exit"),
+            ("label_locked_mode_normal", "unlock"),
+        ];
+        // Locked binds only the one escape hatch.
+        let locked = vec![(key(BareKey::Esc), vec![TO_NORMAL])];
+        assert_eq!(rendered(InputMode::Locked, &locked, config), "ESC unlock");
+        // Pane binds Enter and Esc to the same action, so they form one hint
+        // carrying both keys, under the global label.
+        let pane = vec![
+            (key(BareKey::Enter), vec![TO_NORMAL]),
+            (key(BareKey::Esc), vec![TO_NORMAL]),
+        ];
+        assert_eq!(rendered(InputMode::Pane, &pane, config), "ESCENTER exit");
+    }
+
+    /// A styled line of the shape the plugin actually emits: coloured segments
+    /// closed by the reset `ANSIStrings` appends.
+    fn styled_line() -> String {
+        let parts = vec![
+            Style::new().on(Fixed(1)).paint("aaaa"),
+            Style::new().on(Fixed(2)).paint("bbbb"),
+        ];
+        format!("{}", ANSIStrings(&parts))
+    }
+
+    #[test]
+    fn an_untruncated_line_already_ends_reset() {
+        assert!(styled_line().ends_with(ANSI_RESET));
+    }
+
+    #[test]
+    fn truncating_closes_the_styled_run_so_colour_stops_at_the_cut() {
+        let truncated = truncate_ansi_string(&styled_line(), "...", 6, false);
+        assert!(
+            truncated.ends_with(ANSI_RESET),
+            "colour would bleed past the cut: {:?}",
+            truncated
+        );
+    }
+
+    #[test]
+    fn truncating_keeps_the_visible_width_within_the_limit() {
+        for limit in 1..=10 {
+            let truncated = truncate_ansi_string(&styled_line(), "...", limit, false);
+            assert!(
+                calculate_visible_length(&truncated, false) <= limit,
+                "limit {} produced {:?}",
+                limit,
+                truncated
+            );
+        }
+    }
+
+    #[test]
+    fn a_line_that_fits_is_left_exactly_as_it_was() {
+        let line = styled_line();
+        assert_eq!(truncate_ansi_string(&line, "...", 100, false), line);
+    }
+
+    /// Four one-key hints, each rendering as `<key> <label>` — 6 columns wide
+    /// with the test harness's formats, plus a 1-column spacer between them.
+    fn four_hints() -> Vec<(KeyWithModifier, Vec<Action>)> {
+        vec![
+            (key(BareKey::Char('a')), vec![Action::CloseFocus]),
+            (key(BareKey::Char('b')), vec![Action::ToggleFocusFullscreen]),
+            (key(BareKey::Char('c')), vec![Action::TogglePaneFrames]),
+            (key(BareKey::Char('d')), vec![Action::TogglePanePinned]),
+        ]
+    }
+
+    #[test]
+    fn hints_are_dropped_from_the_right_to_fit() {
+        let all = rendered(InputMode::Pane, &four_hints(), &[]);
+        assert_eq!(all, "a close|b fullscreen|c frames|d pin");
+        // Enough room for the first two only.
+        let fitted = rendered(InputMode::Pane, &four_hints(), &[("limit", "20")]);
+        assert_eq!(fitted, "a close|b fullscreen");
+    }
+
+    #[test]
+    fn unpinned_hints_yield_before_hints_pinned_to_the_end() {
+        // `pin` is pinned last, so the unpinned middle drops around it.
+        let fitted = rendered(
+            InputMode::Pane,
+            &four_hints(),
+            &[("hint_order", "*, pin"), ("limit", "20")],
+        );
+        assert_eq!(fitted, "a close|d pin");
+    }
+
+    #[test]
+    fn hints_pinned_to_the_front_are_kept_too() {
+        let fitted = rendered(
+            InputMode::Pane,
+            &four_hints(),
+            &[("hint_order", "frames, *, pin"), ("limit", "20")],
+        );
+        assert_eq!(fitted, "c frames|d pin");
+    }
+
+    #[test]
+    fn the_leading_group_is_given_up_before_the_trailing_one() {
+        // `close, fullscreen, *, pin`: once the `*` is gone the leading group is
+        // consumed from its inner edge outward, so the trailing `pin` — the hint
+        // most deliberately placed — is the last one standing.
+        let order = ("hint_order", "close, fullscreen, *, pin");
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[order, ("limit", "26")]),
+            "a close|b fullscreen|d pin"
+        );
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[order, ("limit", "20")]),
+            "a close|d pin"
+        );
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[order, ("limit", "8")]),
+            "d pin"
+        );
+    }
+
+    #[test]
+    fn precedence_lt_keeps_the_leading_group_instead() {
+        let order = ("hint_order", "close, fullscreen, *, pin");
+        let lt = ("hint_precedence", "lt");
+        // The trailing `pin` is spent first now, so the leading pair outlives it.
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[order, lt, ("limit", "22")]
+            ),
+            "a close|b fullscreen"
+        );
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[order, lt, ("limit", "10")]
+            ),
+            "a close"
+        );
+    }
+
+    #[test]
+    fn precedence_defaults_to_keeping_the_trailing_group() {
+        let order = ("hint_order", "close, fullscreen, *, pin");
+        let explicit = ("hint_precedence", "tl");
+        let limit = ("limit", "10");
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[order, explicit, limit]),
+            rendered(InputMode::Pane, &four_hints(), &[order, limit])
+        );
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[order, limit]),
+            "d pin"
+        );
+    }
+
+    #[test]
+    fn precedence_still_leaves_the_dropped_hints_in_one_run() {
+        // Whichever group is spent first, the gap stays contiguous.
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[
+                    ("hint_order", "close, fullscreen, *, pin"),
+                    ("hint_precedence", "lt"),
+                    ("drop_indicator", "…"),
+                    ("limit", "22")
+                ]
+            ),
+            "a close|b fullscreen|…"
+        );
+    }
+
+    #[test]
+    fn dropped_hints_stay_one_run_so_a_single_indicator_covers_them() {
+        // Each drop extends the same gap rather than opening a new one, so the
+        // indicator never needs a twin.
+        let order = ("hint_order", "close, fullscreen, *, pin");
+        let indicator = ("drop_indicator", "…");
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[order, indicator, ("limit", "30")]
+            ),
+            "a close|b fullscreen|…|d pin"
+        );
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[order, indicator, ("limit", "20")]
+            ),
+            "a close|…|d pin"
+        );
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[order, indicator, ("limit", "10")]
+            ),
+            "…|d pin"
+        );
+    }
+
+    #[test]
+    fn the_indicator_marks_where_hints_were_dropped() {
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[("drop_indicator", "…"), ("limit", "22")]
+            ),
+            "a close|b fullscreen|…"
+        );
+    }
+
+    #[test]
+    fn no_indicator_appears_when_everything_fits() {
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[("drop_indicator", "…"), ("limit", "100")]
+            ),
+            "a close|b fullscreen|c frames|d pin"
+        );
+    }
+
+    #[test]
+    fn the_indicator_is_paid_for_out_of_the_same_budget() {
+        // A wide indicator costs room of its own, so it forces a further drop
+        // rather than pushing the line over the limit.
+        let wide = rendered(
+            InputMode::Pane,
+            &four_hints(),
+            &[("drop_indicator", "<more>"), ("limit", "22")],
+        );
+        assert!(
+            calculate_visible_length(&wide, false) <= 22,
+            "over the limit: {:?}",
+            wide
+        );
+        assert!(wide.contains("<more>"), "indicator missing: {:?}", wide);
+    }
+
+    #[test]
+    fn one_hint_always_survives_for_truncation_to_handle() {
+        let fitted = rendered(InputMode::Pane, &four_hints(), &[("limit", "2")]);
+        assert_eq!(fitted, "a close");
+    }
+
+    #[test]
+    fn width_counts_columns_not_characters() {
+        // A CJK ideograph is two columns in any terminal.
+        assert_eq!(calculate_visible_length("ab", false), 2);
+        assert_eq!(calculate_visible_length("字", false), 2);
+        assert_eq!(calculate_visible_length("a字b", false), 4);
+    }
+
+    #[test]
+    fn nerd_font_glyphs_are_ambiguous_width() {
+        // U+F060 is the arrow glyph used for `key_alias_left`. It is East Asian
+        // Ambiguous: one column by the standard, two in a terminal set up for
+        // Nerd Fonts.
+        assert_eq!(calculate_visible_length("\u{f060}", false), 1);
+        assert_eq!(calculate_visible_length("\u{f060}", true), 2);
+    }
+
+    #[test]
+    fn escape_sequences_take_no_columns() {
+        assert_eq!(calculate_visible_length(&styled_line(), false), 8);
+        assert_eq!(calculate_visible_length(&styled_line(), true), 8);
+    }
+
+    #[test]
+    fn wide_glyphs_are_measured_when_fitting_hints() {
+        // Two hints whose labels are wide glyphs. Counting characters would call
+        // this 4 columns of label; it is really 8.
+        let keymap = vec![
+            (key(BareKey::Char('a')), vec![Action::CloseFocus]),
+            (key(BareKey::Char('b')), vec![Action::ToggleFocusFullscreen]),
+        ];
+        // Distinct labels, or sharing one would deliberately fuse them.
+        let labels: Vec<(&str, &str)> =
+            vec![("label_close_pane", "字左"), ("label_fullscreen", "字右")];
+        // Each hint is "a " plus a 4-column label = 6; with the 1-column spacer
+        // the pair is 13 columns, though only 9 characters.
+        assert_eq!(rendered(InputMode::Pane, &keymap, &labels), "a 字左|b 字右");
+        // 12 columns cannot hold both, even though 9 characters would fit.
+        let mut fitted = labels.clone();
+        fitted.push(("limit", "12"));
+        assert_eq!(rendered(InputMode::Pane, &keymap, &fitted), "a 字左");
+    }
+
+    fn pane(x: usize, columns: usize, floating: bool) -> PaneInfo {
+        PaneInfo {
+            pane_x: x,
+            pane_columns: columns,
+            is_floating: floating,
+            ..Default::default()
+        }
+    }
+
+    fn suppressed_pane(x: usize, columns: usize) -> PaneInfo {
+        PaneInfo {
+            pane_x: x,
+            pane_columns: columns,
+            is_suppressed: true,
+            ..Default::default()
+        }
+    }
+
+    fn manifest(panes: Vec<PaneInfo>) -> PaneManifest {
+        let mut map = HashMap::new();
+        map.insert(0, panes);
+        PaneManifest { panes: map }
+    }
+
+    #[test]
+    fn terminal_width_is_the_right_edge_of_the_widest_pane() {
+        // Two panes side by side across an 80-column terminal.
+        let panes = vec![pane(0, 40, false), pane(40, 40, false)];
+        assert_eq!(terminal_width(&manifest(panes)), Some(80));
+    }
+
+    #[test]
+    fn floating_panes_do_not_define_the_terminal_width() {
+        let panes = vec![pane(0, 80, false), pane(10, 30, true)];
+        assert_eq!(terminal_width(&manifest(panes)), Some(80));
+    }
+
+    #[test]
+    fn suppressed_panes_do_not_define_the_terminal_width() {
+        // Suppressed panes stop tracking resizes, so their stale geometry is
+        // often the widest. Trusting it pins the width to an old value and the
+        // hints are never refitted.
+        let panes = vec![
+            pane(0, 103, false),
+            suppressed_pane(53, 106),
+            suppressed_pane(53, 106),
+        ];
+        assert_eq!(terminal_width(&manifest(panes)), Some(103));
+    }
+
+    #[test]
+    fn width_is_unknown_when_there_is_nothing_to_measure() {
+        assert_eq!(terminal_width(&manifest(vec![])), None);
+        assert_eq!(terminal_width(&manifest(vec![pane(0, 0, false)])), None);
+    }
+
+    fn limits(
+        max_length: usize,
+        auto: bool,
+        reserve: usize,
+        width: Option<usize>,
+    ) -> Option<usize> {
+        State {
+            max_length,
+            auto_width: auto,
+            reserve_columns: reserve,
+            terminal_width: width,
+            ..Default::default()
+        }
+        .length_limit()
+    }
+
+    #[test]
+    fn auto_width_fits_the_hints_to_the_terminal() {
+        assert_eq!(limits(0, true, 0, Some(80)), Some(80));
+    }
+
+    #[test]
+    fn reserved_columns_are_kept_free_for_the_rest_of_the_bar() {
+        assert_eq!(limits(0, true, 30, Some(80)), Some(50));
+        // A reserve wider than the terminal floors at zero rather than wrapping.
+        assert_eq!(limits(0, true, 200, Some(80)), Some(0));
+    }
+
+    #[test]
+    fn an_explicit_max_length_is_never_exceeded_on_a_wide_terminal() {
+        assert_eq!(limits(40, true, 0, Some(200)), Some(40));
+    }
+
+    #[test]
+    fn auto_width_still_narrows_below_an_explicit_max_length() {
+        assert_eq!(limits(100, true, 0, Some(60)), Some(60));
+    }
+
+    #[test]
+    fn nothing_is_capped_before_the_first_pane_update() {
+        // Auto-fitting waits for a real width rather than guessing one.
+        assert_eq!(limits(0, true, 0, None), None);
+        assert_eq!(limits(40, true, 0, None), Some(40));
+    }
+
+    #[test]
+    fn auto_width_off_leaves_only_the_explicit_cap() {
+        assert_eq!(limits(0, false, 0, Some(80)), None);
+        assert_eq!(limits(40, false, 0, Some(80)), Some(40));
+    }
+
+    fn label_config(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn a_mode_scoped_label_beats_the_global_one() {
+        let config = label_config(&[
+            ("label_mode_normal", "exit"),
+            ("label_locked_mode_normal", "unlock"),
+        ]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "locked", &config),
+            Some(Some("unlock".to_string()))
+        );
+        // Every other mode still gets the global label.
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "pane", &config),
+            Some(Some("exit".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_mode_scoped_label_works_by_action_signature_too() {
+        let config = label_config(&[("label_locked_switch_to_mode_normal", "unlock")]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "locked", &config),
+            Some(Some("unlock".to_string()))
+        );
+    }
+
+    #[test]
+    fn concept_id_wins_over_signature_at_the_same_scope() {
+        let config = label_config(&[
+            ("label_mode_normal", "by id"),
+            ("label_switch_to_mode_normal", "by signature"),
+        ]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "pane", &config),
+            Some(Some("by id".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_mode_scoped_empty_label_hides_the_hint_in_that_mode_only() {
+        let config = label_config(&[("label_pane_mode_normal", "")]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "pane", &config),
+            Some(None)
+        );
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "tab", &config),
+            None
+        );
+    }
+
+    #[test]
+    fn a_mode_scope_can_reinstate_a_hint_hidden_globally() {
+        let config = label_config(&[
+            ("label_mode_normal", ""),
+            ("label_locked_mode_normal", "unlock"),
+        ]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "locked", &config),
+            Some(Some("unlock".to_string()))
+        );
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "tab", &config),
+            Some(None)
+        );
+    }
+
+    #[test]
+    fn no_matching_label_leaves_the_builtin_in_place() {
+        let config = label_config(&[("label_quit", "bye")]);
+        assert_eq!(
+            label_override("mode_normal", "switch_to_mode_normal", "locked", &config),
+            None
+        );
+    }
+
+    #[test]
+    fn keys_sharing_a_modifier_stay_in_one_contiguous_run() {
+        let mut keys = vec![
+            KeyWithModifier::new(BareKey::Char('j')),
+            KeyWithModifier::new(BareKey::Char('h')).with_ctrl_modifier(),
+            KeyWithModifier::new(BareKey::Char('h')),
+            KeyWithModifier::new(BareKey::Char('j')).with_ctrl_modifier(),
+        ];
+        sort_keys(&mut keys, KeyOrder::Qwerty);
+        let rendered: Vec<String> = keys
+            .iter()
+            .map(|k| {
+                let prefix = if k.key_modifiers.is_empty() { "" } else { "^" };
+                match k.bare_key {
+                    BareKey::Char(c) => format!("{}{}", prefix, c),
+                    _ => "?".to_string(),
+                }
+            })
+            .collect();
+        assert_eq!(rendered, vec!["h", "j", "^h", "^j"]);
+    }
+}
