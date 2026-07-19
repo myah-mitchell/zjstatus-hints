@@ -2698,7 +2698,7 @@ dependencies = [
 
 [[package]]
 name = "zjstatus-hints"
-version = "0.1.4"
+version = "0.2.0"
 dependencies = [
  "ansi_term",
  "unicode-width 0.2.2",
