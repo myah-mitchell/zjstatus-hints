@@ -1282,7 +1282,7 @@ fn render_hints_for_mode(
     match mode {
         InputMode::Normal => {
             for (action, label) in NORMAL_MODE_ACTIONS {
-                let keys = find_keys_for_actions(keymap, &[action.clone()], true);
+                let keys = find_keys_for_actions(keymap, std::slice::from_ref(action), true);
                 add_curated_hint(&mut hints, &keys, action, label, style, &mut used);
             }
         }

@@ -65,7 +65,7 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
         with:
-          toolchain: "1.84.0"
+          toolchain: "1.96.0"
           target: wasm32-wasip1
 
       # Releases are rare and must be trustworthy, so they are built and tested

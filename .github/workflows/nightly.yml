@@ -28,7 +28,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
         with:
-          toolchain: "1.84.0"
+          toolchain: "1.96.0"
           target: wasm32-wasip1
 
       - name: Ensure OpenSSL headers
