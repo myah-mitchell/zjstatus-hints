@@ -103,6 +103,13 @@ jobs:
         id: git-cliff
         with:
           config: cliff.toml
+          # The action defaults to git-cliff 2.10.1, whose `--latest` walks only
+          # the first-parent chain. Merge-commit merges (which this repo uses,
+          # to keep stacked PRs intact) put each PR's real feat/fix commits on a
+          # second parent, so 2.10.1 attributed them to the wrong release and a
+          # release's notes came out as just the version-bump commit. Fixed in
+          # later git-cliff; pin a version that reads the full history.
+          version: "2.13.1"
           args: -vv --latest --strip header
         env:
           OUTPUT: CHANGES.md
