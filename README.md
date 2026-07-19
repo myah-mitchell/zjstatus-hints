@@ -183,11 +183,16 @@ For how the repository builds, tests and releases itself, see
 - [x] more advanced mode-specific configuration
 - [x] improved handling of long outputs
 - [x] ability to enable/disable specific hints
-- [ ] replace `ansi_term`, which has been unmaintained since 2021
-      (RUSTSEC-2021-0139). It is a direct dependency and the only advisory
-      warning this project owns — the rest come in through `zellij-tile`.
-      `nu-ansi-term` is a maintained fork of the same API; `anstyle` is the
-      more modern choice but a larger change.
+- [ ] shed the unmaintained transitive crates, once Zellij allows it. Three
+      RUSTSEC advisories are open, all warning-level (unmaintained / a
+      Windows-only unsound read) and none reachable in a wasm plugin:
+      `ansi_term` (RUSTSEC-2021-0139) via `zellij-tile-utils`, and `atty`
+      (RUSTSEC-2021-0145, RUSTSEC-2024-0375) via `clap 3` in `zellij-utils`.
+      **None is removable from here** — swapping our own `ansi_term` for
+      `nu-ansi-term` only adds a second ANSI crate, since `zellij-tile-utils`
+      still pulls `ansi_term`, and `atty` only leaves when Zellij moves to
+      clap 4. They clear when Zellij updates; `cargo audit` already passes, as
+      these are warnings, not vulnerabilities.
 - [x] reconsider the `select` hint — dropped. It labelled Enter separately in
       seven modes, but Enter and Esc are bound to the identical
       `SwitchToMode "Normal"`, so it spent a hint on a distinction Zellij does
