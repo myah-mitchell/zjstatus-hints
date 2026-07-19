@@ -1,0 +1,54 @@
+# git-cliff configuration — generates release notes from commit messages.
+# Referenced by .github/workflows/release.yml. See https://git-cliff.org
+
+[changelog]
+header = """
+# Changelog\n
+"""
+body = """
+{% if version %}\
+    ## {{ version | trim_start_matches(pat="v") }} — {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## Unreleased
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+          {{ commit.message | upper_first }}\
+    {% endfor %}
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+protect_breaking_commits = true
+filter_commits = false
+topo_order = false
+sort_commits = "oldest"
+
+# Commit subjects are matched in order; the first match wins.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactor" },
+  { message = "^docs", group = "<!-- 4 -->Documentation" },
+  { message = "^test", group = "<!-- 5 -->Testing" },
+  # Dependency bumps are the bulk of automated releases, so they get their own
+  # group rather than being buried in chores.
+  { message = "^chore\\(deps\\)", group = "<!-- 6 -->Dependencies" },
+  { message = "^chore", group = "<!-- 7 -->Miscellaneous" },
+  { message = "^ci", group = "<!-- 7 -->Miscellaneous" },
+  { message = "^style", skip = true },
+  { body = ".*security", group = "<!-- 1 -->Bug fixes" },
+]
+
+commit_preprocessors = [
+  # Trim the trailing period some subjects pick up.
+  { pattern = '\.$', replace = "" },
+]

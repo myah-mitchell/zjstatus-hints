@@ -1,15 +1,41 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
+---
+# Dependabot is a backstop here, not the main path. Routine version updates come
+# from .github/workflows/update-deps.yml, which batches them into one nightly
+# pull request and holds the Zellij crates to patch releases — bumping those
+# past a minor breaks hints silently unless the running Zellij is upgraded too.
+#
+# What Dependabot adds is urgency. Security advisories should not wait for the
+# next scheduled run, and GitHub raises those regardless of the settings below.
 version: 2
 updates:
-  - package-ecosystem: "cargo" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: cargo
+    directory: "/"
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "github-actions" # See documentation for possible values
-    directory: "/" # Location of package manifests
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore(deps)"
+    # Routine bumps belong to the nightly workflow; ignoring them here stops the
+    # two opening competing pull requests for the same version. Security
+    # updates are exempt from `ignore` and still come through.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+
+  # Actions are not covered by the Rust workflow, and a pinned SHA never moves
+  # on its own — even if the action behind it is abandoned or compromised.
+  - package-ecosystem: github-actions
+    directory: "/"
     schedule:
-      interval: "weekly"
+      interval: monthly
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "ci"

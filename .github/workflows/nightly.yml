@@ -1,0 +1,91 @@
+---
+name: Nightly
+on:
+  schedule:
+    # 05:00 UTC, after the dependency check has had time to open its PR.
+    - cron: "0 5 * * *"
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  nightly:
+    name: nightly
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.96.0"
+          target: wasm32-wasip1
+
+      - name: Ensure OpenSSL headers
+        run: |
+          if ! pkg-config --exists openssl; then
+            sudo apt-get update && sudo apt-get install -y libssl-dev
+          fi
+
+      # A nightly that fails its tests is worse than no nightly, since it is
+      # installed unattended.
+      - name: Test
+        run: cargo test --all-features
+
+      - name: Build release binary
+        run: cargo build --release --target=wasm32-wasip1
+
+      - name: Describe this build
+        id: describe
+        run: |
+          set -euo pipefail
+          version="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          {
+            echo "Rolling build of \`main\`, replaced every night."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | \`${version}\` (unreleased) |"
+            echo "| Commit | \`$(git rev-parse --short HEAD)\` |"
+            echo "| Built | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+            echo
+            echo "\`$(git log -1 --pretty=%s)\`"
+            echo
+            echo "> Not a stable release. For that, see the"
+            echo "> [latest release](../../releases/latest)."
+          } > NIGHTLY.md
+
+      # The tag is moved rather than added to, so `nightly` always names the
+      # current build and old ones are not kept.
+      - name: Move the nightly tag
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f nightly
+          git push -f origin nightly
+
+      - name: Publish nightly release
+        uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2.4.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: nightly
+          name: Nightly
+          body_path: NIGHTLY.md
+          # Prerelease keeps this out of `/releases/latest/`, so installing the
+          # nightly is always a deliberate choice.
+          prerelease: true
+          make_latest: false
+          files: |
+            ./target/wasm32-wasip1/release/zjstatus-hints.wasm

@@ -1,5 +1,6 @@
 MIT License
 
+Copyright (c) 2026 Myah Mitchell
 Copyright (c) 2025 Maddison Cohodas
 Copyright (c) 2020 Zellij contributors
 
