@@ -1,14 +1,26 @@
 ---
 name: Release
 on:
+  # Manual route: push a tag yourself.
   push:
     tags:
       - "v*.*.*"
+    # Automatic route: a merge to main whose Cargo.toml version has no tag yet.
+    # Dependency PRs bump the patch version as part of the PR, so merging one
+    # lands a new version here and this publishes it.
+    branches:
+      - main
   workflow_dispatch:
 
+permissions:
+  contents: write # create tags and releases
+
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
-  build-release:
-    name: build-release
+  release:
+    name: release
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: 1
@@ -16,23 +28,77 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
         with:
-          fetch-tags: false # https://github.com/actions/checkout/issues/1467
+          fetch-depth: 0 # git-cliff needs history to build a changelog
+          fetch-tags: true
 
-      - run: git fetch --tags --all --force && git pull origin ${{ github.ref }}  --unshallow --force
-        name: Fetch tags manually as a workaround. See https://github.com/actions/checkout/issues/1467
+      # Works out what is being released and whether there is anything to do.
+      #
+      # On a tag push the tag is the answer. On a push to main the version comes
+      # from Cargo.toml, and the run is skipped when that version is already
+      # tagged — most merges to main are not releases.
+      - name: Resolve version
+        id: version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            tag="${GITHUB_REF#refs/tags/}"
+            echo "Releasing tag ${tag}"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            echo "create_tag=false" >> "$GITHUB_OUTPUT"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          version="$(grep -m1 '^version = ' Cargo.toml | cut -d'"' -f2)"
+          tag="v${version}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "::notice::${tag} is already released; nothing to do."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Cargo.toml is at ${version}, which has no tag yet."
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+            echo "create_tag=true" >> "$GITHUB_OUTPUT"
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install Rust
+        if: steps.version.outputs.proceed == 'true'
         uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
         with:
-          profile: minimal
-          override: true
           toolchain: "1.84.0"
           target: wasm32-wasip1
 
+      # Releases are rare and must be trustworthy, so they are built and tested
+      # from scratch rather than from a cache.
+      - name: Ensure OpenSSL headers
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          if ! pkg-config --exists openssl; then
+            sudo apt-get update && sudo apt-get install -y libssl-dev
+          fi
+
+      - name: Test
+        if: steps.version.outputs.proceed == 'true'
+        run: cargo test --all-features
+
       - name: Build release binary
+        if: steps.version.outputs.proceed == 'true'
         run: cargo build --release --target=wasm32-wasip1
 
+      # Tag before generating notes, so git-cliff sees the release it is
+      # describing as the latest one.
+      - name: Create tag
+        if: steps.version.outputs.proceed == 'true' && steps.version.outputs.create_tag == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" \
+            -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
       - name: Generate a changelog
+        if: steps.version.outputs.proceed == 'true'
         uses: orhun/git-cliff-action@d77b37db2e3f7398432d34b72a12aa3e2ba87e51 # v3
         id: git-cliff
         with:
@@ -42,12 +108,18 @@ jobs:
           OUTPUT: CHANGES.md
 
       - name: Create release
+        if: steps.version.outputs.proceed == 'true'
         uses: softprops/action-gh-release@5be0e66d93ac7ed76da52eca8bb058f665c3a5fe # v2.4.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          draft: true
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
           body: ${{ steps.git-cliff.outputs.content }}
+          # Published, not draft: this is the release `/releases/latest/`
+          # resolves to, and approving a PR is meant to be the last manual step.
+          draft: false
           prerelease: false
+          make_latest: true
           files: |
             ./target/wasm32-wasip1/release/zjstatus-hints.wasm

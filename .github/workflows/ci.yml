@@ -1,0 +1,95 @@
+---
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_call: # so other workflows can gate on a green CI run
+
+# Warnings fail the build, including Clippy lints.
+env:
+  RUSTFLAGS: "-Dwarnings"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Formatting is the cheapest check, so it runs on its own and fails fast.
+  fmt:
+    name: rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.84.0"
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.84.0"
+          target: wasm32-wasip1
+          components: clippy
+      - uses: Swatinem/rust-cache@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+        with:
+          key: wasm
+      - run: cargo clippy --all-features --target=wasm32-wasip1
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.84.0"
+      - uses: Swatinem/rust-cache@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+        with:
+          key: host
+      # Tests build for the host, not wasm, which pulls in
+      # zellij-utils -> isahc -> curl -> openssl-sys. That needs the OpenSSL
+      # headers; wasm builds exclude the whole chain and never notice.
+      # ubuntu-latest ships libssl-dev, but install it explicitly so a runner
+      # image change fails here with a clear cause rather than a linker error.
+      - name: Ensure OpenSSL headers
+        run: |
+          if ! pkg-config --exists openssl; then
+            sudo apt-get update && sudo apt-get install -y libssl-dev
+          fi
+      - run: cargo test --all-features
+
+  # The artifact users actually install. Proving it links for wasm is separate
+  # from the host test run above.
+  build:
+    name: build (wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
+        with:
+          toolchain: "1.84.0"
+          target: wasm32-wasip1
+      - uses: Swatinem/rust-cache@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+        with:
+          key: wasm
+      - run: cargo build --release --target=wasm32-wasip1
+      - name: Report artifact size
+        run: ls -lh target/wasm32-wasip1/release/zjstatus-hints.wasm
+
+  # Known vulnerabilities in the dependency tree. Advisories appear without any
+  # code changing, so this runs on every push rather than only on updates.
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - uses: rustsec/audit-check@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
