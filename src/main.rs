@@ -562,11 +562,23 @@ impl ZellijPlugin for State {
             PermissionType::MessageAndLaunchOtherPlugins,
         ]);
 
-        set_selectable(false);
+        // Deliberately still selectable at this point.
+        //
+        // Zellij draws the permission prompt in the plugin's own pane, and a
+        // pane that is not selectable cannot be focused — so making this
+        // unselectable before the prompt is answered leaves the user unable to
+        // answer it at all. The pane is a one-line status bar, so the prompt
+        // has nowhere to go and no way to be reached.
+        //
+        // `set_selectable(false)` happens once the result arrives instead. That
+        // is safe for an already-granted plugin too: `request_permission`
+        // replies immediately from the permission cache rather than staying
+        // silent, so the event always comes.
         subscribe(&[
             EventType::ModeUpdate,
             EventType::SessionUpdate,
             EventType::PaneUpdate,
+            EventType::PermissionRequestResult,
         ]);
     }
 
@@ -589,6 +601,12 @@ impl ZellijPlugin for State {
                     self.terminal_width = width;
                     should_render = true;
                 }
+            }
+            // Answered, or granted from the cache. Either way the prompt is
+            // gone and the pane has no further reason to take focus.
+            Event::PermissionRequestResult(_) => {
+                set_selectable(false);
+                should_render = true;
             }
             _ => {}
         };
