@@ -835,6 +835,16 @@ so [`hint_order`](#hint-order) should refer to it by that label.
       `SwitchToMode "Normal"`, so it spent a hint on a distinction Zellij does
       not make. Both keys now form one `mode_normal` hint.
 
+## Contributing
+
+Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md)
+for the development loop, and [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for
+expected conduct. Security problems should go through
+[SECURITY.md](SECURITY.md) rather than a public issue.
+
+How this repository builds, tests and releases itself is described in
+[docs/AUTOMATION.md](docs/AUTOMATION.md).
+
 ## License
 
 &copy; 2026 Myah Mitchell
