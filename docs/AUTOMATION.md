@@ -4,7 +4,7 @@ How this repository builds, tests, updates itself and publishes — and the
 one-time setup GitHub needs before any of it works.
 
 If you are reading this to get things running, start at
-[First-time setup](#first-time-setup). It is five tasks and takes about ten
+[First-time setup](#first-time-setup). It is four tasks and takes about ten
 minutes.
 
 ## The shape of it
@@ -18,8 +18,8 @@ minutes.
    bump patch version
    open pull request  ──────────►  email arrives
                                    wait a day or two
-                                   click Approve      ──────►  auto-merge
-                                                               once CI is green
+                                   click Merge        ──────►  merged
+                                   (CI already green)               │
                                                                     │
  release.yml ◄──────────────────────────────────────────────────────┘
    sees a new version in Cargo.toml
@@ -33,7 +33,14 @@ minutes.
    replace the nightly prerelease
 ```
 
-Your only interaction is the Approve click.
+Your only interaction is the Merge click.
+
+> **Why not auto-merge on approval?** GitHub does not let you approve your own
+> pull requests, and the bot's are opened with your token, so it counts them as
+> yours. On a single-maintainer repository a required approval can never be
+> satisfied — only bypassed. Merging by hand is the same one click, and it keeps
+> the pause: auto-merge would have merged the moment CI went green rather than
+> waiting for you to look.
 
 ## Workflows
 
@@ -79,17 +86,18 @@ tests pass, and hints render with wrong labels. There is no error anywhere.
 
 `.github/scripts/check_deps.py` asks crates.io what exists and reports anything
 held back. When a Zellij crate has a new minor, the pull request is labelled
-`needs-zellij-upgrade` and **auto-merge is not enabled** — upgrade Zellij
-first, then bump the crate by hand.
+**`needs-zellij-upgrade`** and the workflow run carries a warning. Upgrade
+Zellij first, then bump the crate by hand — that is the one update where
+merging on a green build is not enough.
 
 ## First-time setup
 
 ### 1. Create the automation token
 
 A pull request opened with the built-in `GITHUB_TOKEN` does not start any
-workflows. GitHub does this to prevent loops, but it means required checks
-would sit pending forever and auto-merge would never fire. A personal access
-token avoids that.
+workflows. GitHub does this to prevent loops, but with required status checks
+on `main` it means those checks sit pending forever and the pull request can
+never be merged. A personal access token avoids that.
 
 1. Go to **Settings → Developer settings → Personal access tokens →
    Fine-grained tokens** (on your account, not the repository).
@@ -108,7 +116,7 @@ token avoids that.
    value, save.
 
 `update-deps.yml` checks for this first and fails with an explanation if it is
-missing, rather than opening a pull request that can never merge.
+missing, rather than opening a pull request whose checks can never pass.
 
 ### 2. Let Actions open pull requests
 
@@ -118,17 +126,7 @@ missing, rather than opening a pull request that can never merge.
 - Tick **Allow GitHub Actions to create and approve pull requests**.
 - Save.
 
-### 3. Turn on auto-merge
-
-**Settings → General → Pull Requests**: tick **Allow auto-merge**.
-
-Without this, `gh pr merge --auto` fails and the workflow logs a warning
-pointing back here.
-
-### 4. Protect `main`
-
-Auto-merge needs something to wait for. With no rule, "merge when checks pass"
-has no checks to pass and GitHub refuses to arm it.
+### 3. Protect `main`
 
 **Settings → Rules → Rulesets → New branch ruleset**:
 
@@ -136,21 +134,27 @@ has no checks to pass and GitHub refuses to arm it.
 - Enforcement status: **Active**
 - Target branches: **Include default branch**
 - Tick **Require a pull request before merging**
-  - Required approvals: **1**
+  - Required approvals: **0**
 - Tick **Require status checks to pass**
   - Add: `rustfmt`, `clippy`, `test`, `build (wasm)`
 - Leave **Require branches to be up to date** off, or a busy day means
   rebasing before every merge.
 
 > The status check names must match the `name:` of each job in `ci.yml`. They
-> only appear in the picker after a workflow has run once, so push this branch
-> first and come back.
+> only appear in the picker after a workflow has run once, so push a branch and
+> let CI run before coming back here.
 
-Since you are the only maintainer, also decide whether to tick **Do not allow
-bypassing the above settings**. Leaving it unticked lets you push directly to
-`main` when you need to; ticking it means even you go through a pull request.
+**Required approvals is 0 deliberately.** GitHub will not let you approve your
+own pull requests, and the bot opens its ones with your token, so it treats
+those as yours too. Setting 1 would mean nothing could ever merge without
+bypassing the rule you just wrote. The status checks are the gate that actually
+does work here.
 
-### 5. Get the email
+Also decide whether to tick **Do not allow bypassing the above settings**.
+Leaving it unticked lets you push directly to `main` when you need to; ticking
+it means even you go through a pull request.
+
+### 4. Get the email
 
 **Your avatar → Settings → Notifications**:
 
@@ -162,19 +166,21 @@ Test it with **Actions → Update dependencies → Run workflow**. If dependenci
 are already current the job stops early without opening anything, which is also
 a useful signal that the plumbing works.
 
-## Approving
+## Merging
 
 The email arrives when the nightly finds updates. What to look at:
 
 - The pull request body lists what moved and what was held back.
-- If it is labelled `needs-zellij-upgrade`, read the warning before approving.
-  Auto-merge is off for that one deliberately.
+- If it is labelled `needs-zellij-upgrade`, read the warning first. That update
+  needs the running Zellij upgraded before it is safe to take.
 - CI runs on the pull request; tests and a release build also passed *before*
   it was opened, so a red pull request means CI found something the update job
   did not.
 
-Click **Approve**. Auto-merge takes it from there: merge, delete the branch,
-publish the release, rebuild the nightly.
+Click **Merge**. That publishes the release, moves `latest`, and rebuilds the
+nightly.
+
+Nothing merges on its own, so leaving one open for a few days costs nothing.
 
 To stop one: **Close** it. The branch is reused, so the next run reopens with
 whatever is current — nothing is lost by closing one you dislike.
@@ -221,7 +227,7 @@ they are the ones that matter.
 |---|---|
 | Update workflow fails immediately | `AUTOMATION_TOKEN` missing or expired |
 | Pull request opens but no checks run | Opened with `GITHUB_TOKEN`; the token is not being picked up |
-| Approved, but never merges | Auto-merge not allowed, or no branch protection rule |
+| Merge button is blocked | A required status check has not passed — check the PR's Checks tab |
 | Release does not publish after merge | Version in `Cargo.toml` already tagged — check the run's `Resolve version` step |
 | `cargo test` fails to link | OpenSSL headers missing; the workflows install `libssl-dev`, locally use your package manager |
 | Nightly is stale | Check the `nightly.yml` schedule ran; scheduled workflows are paused after 60 days of repository inactivity |

@@ -21,15 +21,15 @@ jobs:
     name: update
     runs-on: ubuntu-latest
     steps:
-      # A PR opened with the default GITHUB_TOKEN does not start any workflows,
-      # which would leave required checks pending forever and auto-merge stuck.
-      # A PAT is what makes the hands-off flow work. See docs/AUTOMATION.md.
+      # A PR opened with the default GITHUB_TOKEN does not start any workflows.
+      # With required status checks on main, that leaves the checks pending
+      # forever and the pull request unmergeable. A PAT is what makes them run.
       - name: Check for the automation token
         run: |
           if [ -z "${{ secrets.AUTOMATION_TOKEN }}" ]; then
             echo "::error::AUTOMATION_TOKEN is not set. Without it the pull" \
-                 "request opens but CI never runs on it, so auto-merge can" \
-                 "never complete. See docs/AUTOMATION.md."
+                 "request opens but CI never runs on it, so its required" \
+                 "checks can never pass. See docs/AUTOMATION.md."
             exit 1
           fi
 
@@ -135,25 +135,15 @@ jobs:
 
             </details>
 
-            Approving is enough; CI merges it once green.
+            Merge when you have had time to look at it; CI must be green
+            first.
 
-      # Held back when a Zellij minor is out, because approving that one means
-      # upgrading Zellij first and should not happen while half-awake.
-      - name: Enable auto-merge
-        if: |
-          steps.deps.outputs.changed == 'true' &&
-          steps.deps.outputs.zellij_minor_available != 'true' &&
-          steps.pr.outputs.pull-request-number
-        env:
-          GH_TOKEN: ${{ secrets.AUTOMATION_TOKEN }}
-        run: |
-          gh pr merge --auto --squash "${{ steps.pr.outputs.pull-request-number }}" \
-            || echo "::warning::Could not enable auto-merge. Check that auto-merge" \
-                    "is allowed on the repository and that main has a branch" \
-                    "protection rule. See docs/AUTOMATION.md."
-
-      - name: Note when auto-merge is withheld
+      # Surfaced in the run as well as on the pull request, because this is the
+      # one update that is not safe to take on its own — the crates have to move
+      # in step with the Zellij actually installed.
+      - name: Warn about a Zellij minor release
         if: steps.deps.outputs.zellij_minor_available == 'true'
         run: |
-          echo "::warning::A Zellij crate has a new minor release. Auto-merge" \
-               "was not enabled — upgrade Zellij before taking this update."
+          echo "::warning::A Zellij crate has a new minor release. Upgrade" \
+               "Zellij before taking this update — a mismatch shows up as" \
+               "hints with wrong labels, not as a build failure."
