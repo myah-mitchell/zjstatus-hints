@@ -5,6 +5,10 @@ on:
   pull_request:
   workflow_call: # so other workflows can gate on a green CI run
 
+# None of the jobs below need more than read access to the repo contents.
+permissions:
+  contents: read
+
 # Warnings fail the build, including Clippy lints.
 env:
   RUSTFLAGS: "-Dwarnings"
