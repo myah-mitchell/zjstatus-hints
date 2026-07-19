@@ -1351,7 +1351,7 @@ fn render_hints_for_mode(
                 ],
             );
             add_group_hint(&mut hints, &focus_keys, "focus", "focus", style, &mut used);
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Tab => {
             for (actions, label) in TAB_MODE_ACTION_SEQUENCES {
@@ -1391,7 +1391,7 @@ fn render_hints_for_mode(
                 &[&[Action::GoToPreviousTab], &[Action::GoToNextTab]],
             );
             add_group_hint(&mut hints, &focus_keys, "focus", "focus", style, &mut used);
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Resize => {
             let resize_keys = find_keys_for_action_groups(
@@ -1475,7 +1475,7 @@ fn render_hints_for_mode(
                 style,
                 &mut used,
             );
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Move => {
             let move_keys = find_keys_for_action_groups(
@@ -1503,7 +1503,7 @@ fn render_hints_for_mode(
                 style,
                 &mut used,
             );
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Scroll => {
             let search_keys = find_keys_for_actions(
@@ -1570,7 +1570,7 @@ fn render_hints_for_mode(
             if !edit_keys.is_empty() {
                 add_group_hint(&mut hints, &edit_keys, "edit", "edit", style, &mut used);
             }
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Search => {
             let search_keys = find_keys_for_actions(
@@ -1654,7 +1654,7 @@ fn render_hints_for_mode(
             );
             add_group_hint(&mut hints, &up_keys, "search_up", "up", style, &mut used);
 
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         InputMode::Session => {
             let detach_keys = find_keys_for_actions(keymap, &[Action::Detach], true);
@@ -1673,7 +1673,7 @@ fn render_hints_for_mode(
                 }
             }
 
-            add_group_hint(&mut hints, &exit, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &exit, style, &mut used);
         }
         _ => {
             let keys = find_keys_for_actions(
@@ -1683,7 +1683,7 @@ fn render_hints_for_mode(
                 }],
                 true,
             );
-            add_group_hint(&mut hints, &keys, "mode_normal", "normal", style, &mut used);
+            add_exit_hint(&mut hints, &keys, style, &mut used);
         }
     }
 
@@ -1978,6 +1978,22 @@ fn add_curated_hint(
         .map(|(id, _)| id.to_string())
         .unwrap_or_else(|| signature.clone());
     apply_label(hints, keys, &id, &signature, default, style, used);
+}
+
+/// Queue the hint for the keys that leave a mode for Normal.
+///
+/// Routed through `add_curated_hint` with the `SwitchToMode "Normal"` action —
+/// not `add_group_hint` — so the override resolves by action name as well as by
+/// id. Both `label_mode_normal` and `label_switch_to_mode_normal` (and their
+/// mode-scoped forms) reach it. That the action form works matters: it is what
+/// the built-in status bar used, so configs carried over from it keep working.
+fn add_exit_hint(
+    hints: &mut Vec<Hint>,
+    keys: &[KeyWithModifier],
+    style: &HintStyle,
+    used: &mut Vec<KeyWithModifier>,
+) {
+    add_curated_hint(hints, keys, &TO_NORMAL, "normal", style, used);
 }
 
 /// Queue a curated hint that has no single backing action — one assembled from a
@@ -2649,6 +2665,61 @@ mod tests {
         assert_eq!(
             rendered(InputMode::Tab, &tab_nav_keymap(), &[]),
             "hl←→ focus"
+        );
+    }
+
+    #[test]
+    fn the_exit_hint_honours_the_action_name_label() {
+        let keymap = vec![(key(BareKey::Esc), vec![TO_NORMAL])];
+        // The action-name form is what the built-in status bar used, so configs
+        // carried over from it rely on this reaching the exit hint.
+        assert_eq!(
+            rendered(
+                InputMode::Tab,
+                &keymap,
+                &[("label_switch_to_mode_normal", "exit")]
+            ),
+            "ESC exit"
+        );
+        // The id form keeps working too.
+        assert_eq!(
+            rendered(InputMode::Tab, &keymap, &[("label_mode_normal", "exit")]),
+            "ESC exit"
+        );
+    }
+
+    #[test]
+    fn the_exit_hint_honours_a_mode_scoped_action_name_label() {
+        let keymap = vec![(key(BareKey::Esc), vec![TO_NORMAL])];
+        let config = &[
+            ("label_switch_to_mode_normal", "exit"),
+            ("label_locked_switch_to_mode_normal", "unlock"),
+        ];
+        assert_eq!(rendered(InputMode::Locked, &keymap, config), "ESC unlock");
+        assert_eq!(rendered(InputMode::Tab, &keymap, config), "ESC exit");
+    }
+
+    #[test]
+    fn a_relabelled_exit_hint_pins_under_its_new_label() {
+        // The regression cascade: when the label did not apply, the hint stayed
+        // "normal", so `hint_order "*, exit"` never matched it, so it sat in the
+        // droppable middle instead of pinned last. With the label applied it is
+        // pinned and survives a narrow bar that drops the middle.
+        let keymap = vec![
+            (key(BareKey::Char('a')), vec![Action::CloseFocus]),
+            (key(BareKey::Char('b')), vec![Action::ToggleFocusFullscreen]),
+            (key(BareKey::Esc), vec![TO_NORMAL]),
+        ];
+        let config = &[
+            ("label_switch_to_mode_normal", "exit"),
+            ("hint_order", "*, exit"),
+            ("limit", "12"),
+        ];
+        let out = rendered(InputMode::Tab, &keymap, config);
+        assert!(
+            out.contains("exit"),
+            "exit was dropped, not pinned: {:?}",
+            out
         );
     }
 
