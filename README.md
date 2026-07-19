@@ -30,7 +30,7 @@ First, install and configure [zjstatus](https://github.com/dj95/zjstatus). Then,
 
 ```kdl
 plugins {
-    zjstatus-hints location="https://github.com/b0o/zjstatus-hints/releases/latest/download/zjstatus-hints.wasm" {
+    zjstatus-hints location="https://github.com/myah-mitchell/zjstatus-hints/releases/latest/download/zjstatus-hints.wasm" {
         // Hard cap on the width of the hint line, in columns
         max_length 0 // 0 = unlimited
         // Fit the hints to the terminal, dropping trailing hints as it
@@ -105,6 +105,23 @@ load_plugins {
     // Load at startup
     zjstatus-hints
 }
+```
+
+### Release channels
+
+Two channels are published:
+
+| Channel | Contents |
+|---|---|
+| `latest` | Tagged releases. What the URL above resolves to. |
+| `nightly` | Rebuilt from `main` every night, tests green. Prerelease. |
+
+Zellij caches remote plugins by URL, so pointing the config at the nightly URL
+will keep serving whatever it downloaded first. To track nightlies, fetch into
+the plugin path instead and start a new session:
+
+```sh
+make nightly   # or: make latest
 ```
 
 Finally, configure zjstatus to display the hints in your default layout (`layouts/default.kdl`):
