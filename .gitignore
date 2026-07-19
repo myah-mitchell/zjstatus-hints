@@ -33,3 +33,7 @@ Cargo.lock
 *.pdb
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,linux
+
+# Python bytecode from .github/scripts
+__pycache__/
+*.py[cod]
