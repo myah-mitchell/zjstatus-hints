@@ -2015,10 +2015,7 @@ fn merged_label_id(label: &str) -> String {
 /// (e.g. `switch_to_mode_locked`) since that distinction is meaningful.
 fn action_signature(action: &Action) -> String {
     let debug = format!("{:?}", action);
-    let variant = debug
-        .split(|c| c == '(' || c == '{' || c == ' ')
-        .next()
-        .unwrap_or(&debug);
+    let variant = debug.split(['(', '{', ' ']).next().unwrap_or(&debug);
     let mut signature = to_snake_case(variant);
     match action {
         Action::SwitchToMode { input_mode: mode }

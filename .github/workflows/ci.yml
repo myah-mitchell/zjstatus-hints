@@ -88,8 +88,23 @@ jobs:
   audit:
     name: cargo audit
     runs-on: ubuntu-latest
+    # cargo-audit's MSRV has outrun this project's pinned 1.84.0 — 0.22.2 wants
+    # 1.88 — and it does not compile our code anyway, it reads Cargo.lock. So
+    # it gets its own toolchain. RUSTUP_TOOLCHAIN overrides rust-toolchain.toml,
+    # which would otherwise pull 1.84.0 back in for every cargo call here.
+    env:
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
-      - uses: rustsec/audit-check@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4f647fc679bcd3b11499ccb42104547c83dabe96 # stable
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2 # TODO: pin to a SHA, see docs/AUTOMATION.md
+        with:
+          key: audit
+          # Keeps the built binary between runs; building it is most of the job.
+          cache-directories: ~/.cargo/bin
+      - name: Install cargo-audit
+        run: command -v cargo-audit >/dev/null || cargo install cargo-audit --locked
+      - run: cargo audit
