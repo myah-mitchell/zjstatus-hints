@@ -825,6 +825,11 @@ so [`hint_order`](#hint-order) should refer to it by that label.
 - [x] more advanced mode-specific configuration
 - [x] improved handling of long outputs
 - [x] ability to enable/disable specific hints
+- [ ] replace `ansi_term`, which has been unmaintained since 2021
+      (RUSTSEC-2021-0139). It is a direct dependency and the only advisory
+      warning this project owns — the rest come in through `zellij-tile`.
+      `nu-ansi-term` is a maintained fork of the same API; `anstyle` is the
+      more modern choice but a larger change.
 - [x] reconsider the `select` hint — dropped. It labelled Enter separately in
       seven modes, but Enter and Esc are bound to the identical
       `SwitchToMode "Normal"`, so it spent a hint on a distinction Zellij does
