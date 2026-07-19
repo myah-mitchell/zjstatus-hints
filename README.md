@@ -2,6 +2,11 @@
 
 A [Zellij](https://github.com/zellij-org/zellij) plugin that displays context-aware key bindings for each Zellij mode. Extends the functionality of [zjstatus](https://github.com/dj95/zjstatus).
 
+> **A fork of [b0o/zjstatus-hints](https://github.com/b0o/zjstatus-hints)** by
+> Maddison Cohodas. The original shows a curated set of hints and pipes them to
+> zjstatus; this fork keeps that and adds a configuration layer on top — see
+> [What this fork adds](#what-this-fork-adds).
+
 ![2025-06-06_16-23-55_region](https://github.com/user-attachments/assets/cfb93423-f37c-410a-aca9-a49290312d0e)
 
 https://github.com/user-attachments/assets/940a31a0-86de-469d-89e2-dab18a1aaca8
@@ -10,19 +15,26 @@ https://github.com/user-attachments/assets/940a31a0-86de-469d-89e2-dab18a1aaca8
 
 Zjstatus is an excellent plugin, but it lacks the ability to display keybinding hints for your current mode, as the built-in Zellij status-bar plugin allows. This plugin adds that functionality to zjstatus, so you can have the best of both worlds.
 
-## Features
+## What this fork adds
 
-- Shows a [curated list](docs/hints.md#the-curated-list) of the key bindings that matter in
-  your current mode, hand-labelled and ordered
-- Optionally [discovers](docs/hints.md#discovered-hints) **every** other binding your config
-  enables, so nothing is hidden from you
-- Integrates seamlessly with zjstatus via named pipes
-- Styled with zjstatus's own format strings, or the active Zellij theme palette
-  when you set nothing
-- Fits the status bar: whole hints are dropped as the window narrows, in an
-  order you control, with an optional indicator marking what was left out
-- Relabel, hide, reorder, or merge any hint — globally or in a single mode
-- Key and modifier aliases, so `Ctrl Left` can read `^←`
+The original shows a [curated list](docs/hints.md#the-curated-list) of hints and
+pipes it to zjstatus, with four configuration options. This fork keeps that
+behaviour and builds a configuration layer over it:
+
+- **[Styling](docs/styling.md)** — global and per-hint format strings, colours,
+  and key/modifier aliases, so `Ctrl Left` can read `^←`
+- **[Discovery](docs/hints.md#discovered-hints)** — optionally surface **every**
+  keybinding your config enables, not just the curated set
+- **[Labels](docs/labels.md)** — rename, hide, merge, or reorder any hint,
+  globally or in a single mode
+- **[Ordering](docs/ordering.md)** — keyboard-layout-aware key order, and a
+  pinned order for the hints themselves
+- **[Fitting](docs/fitting.md)** — drop whole hints to fit the terminal as it
+  narrows, in an order you choose, with an optional indicator for what was cut
+- **Zellij 0.44** support
+
+Four options upstream, around two dozen here — the full list is in the
+[configuration reference](docs/configuration.md).
 
 ## Installation
 
