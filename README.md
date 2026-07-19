@@ -171,6 +171,8 @@ layout {
 - `mod_alias_<name>`: Replace a modifier's name with a symbol (e.g. `mod_alias_ctrl "^"`); see [Modifier aliases](#modifier-aliases)
 - `label_<id>`: Override or hide the label of any hint, curated or discovered (e.g. `label_split_down "split ↓"`); see [Labels](#labels)
 - `label_<mode>_<id>`: The same, scoped to one mode (e.g. `label_locked_mode_normal "unlock"`); see [Per-mode labels](#per-mode-labels)
+- `key_format_<id>` / `desc_format_<id>`: Format strings for a single hint, overriding the global ones; see [Styling one hint](#styling-one-hint)
+- `keys_<id>`: Replace a hint's keys with a fixed string (e.g. `keys_go_to_tab "1-9"`); see [Replacing the keys](#replacing-the-keys)
 
 ## Styling
 
@@ -193,6 +195,71 @@ widget, so styling hints works just like styling `{mode}`, `{tabs}`, and friends
 key_format  "#[fg=$black,bg=$blue,bold] {key} "
 desc_format "#[fg=#cdd6f4,bg=#313244,italic] {desc} "
 ```
+
+### Styling one hint
+
+`key_format` and `desc_format` set the look of every hint. Suffixing an id
+changes one of them:
+
+```kdl
+desc_format      "#[fg=$fg,bg=$bg] {desc} "   // every hint
+desc_format_quit "#[fg=$red,bg=$bg,bold] {desc} "   // …except quit
+key_format_quit  "#[fg=$red,bg=$bg,bold] {key} "
+```
+
+Useful for the hints that are not like the others — a destructive action worth
+colouring, or the way out of a mode worth setting apart from the actions in it.
+
+Resolution runs most specific first, and can be scoped to a mode exactly as
+[labels](#per-mode-labels) can:
+
+1. `key_format_<mode>_<id>`
+2. `key_format_<mode>_<label>`
+3. `key_format_<id>`
+4. `key_format_<label>`
+5. `key_format` — the global setting
+6. the theme palette
+
+A hint can be named by its [id](#ids) or by its label, with spaces written as
+underscores. The label form matters for hints you have
+[fused](#combining-hints) under a shared label, whose internal id is that label
+with a marker prefix:
+
+```kdl
+label_next_layout "swap layout"
+label_prev_layout "swap layout"
+key_format_swap_layout "#[fg=$mauve]{key} "   // addresses the merged hint
+```
+
+An empty value falls back to the theme palette, the same as leaving the global
+option unset.
+
+### Replacing the keys
+
+`keys_<id>` substitutes a fixed string for a hint's keys:
+
+```kdl
+keys_go_to_tab "1-9"      // instead of 123456789
+keys_focus     "hjkl/←↓↑→"
+keys_mouse     "🖱"
+```
+
+For hints better described than enumerated — a long run of keys standing in as
+a range, or an action whose real binding says little. The string is used
+verbatim: [key aliases](#key-aliases) and [key ordering](#key-order) do not
+apply to it, since there are no keys left to alias or sort.
+
+It is still measured at its real width, so [fitting](#fitting-the-bar) accounts
+for a replacement that is wider than what it replaced.
+
+An empty value drops the key part altogether, leaving the label to stand alone:
+
+```kdl
+keys_mouse ""   // renders as just "mouse"
+```
+
+This addresses hints the same way `key_format_<id>` does, mode scoping
+included.
 
 ### Spacing
 

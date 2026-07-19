@@ -98,6 +98,10 @@ const CONFIG_HINT_SPACER: &str = "hint_spacer";
 const CONFIG_KEY_ALIAS_PREFIX: &str = "key_alias_";
 const CONFIG_MOD_ALIAS_PREFIX: &str = "mod_alias_";
 const CONFIG_LABEL_PREFIX: &str = "label_";
+// Per-hint overrides of the global styling, keyed the same way labels are.
+const CONFIG_KEY_FORMAT_PREFIX: &str = "key_format_";
+const CONFIG_DESC_FORMAT_PREFIX: &str = "desc_format_";
+const CONFIG_KEYS_PREFIX: &str = "keys_";
 const CONFIG_DISCOVER_HINTS: &str = "discover_hints";
 const CONFIG_DIRECTION_KEYS: &str = "direction_keys";
 const CONFIG_KEY_ORDER: &str = "key_order";
@@ -985,6 +989,24 @@ fn style_key_with_modifier(
     styled_parts
 }
 
+/// Style arbitrary text as a key, for hints whose keys have been replaced by a
+/// fixed string. Mirrors `style_key_with_modifier` so a replaced key sits in
+/// the same ribbon as a real one.
+fn style_key_text(text: &str, palette: &Styling) -> Vec<ANSIString<'static>> {
+    if text.is_empty() {
+        return vec![];
+    }
+    let saturated_bg = palette_match!(palette.ribbon_unselected.background);
+    let contrasting_fg = palette_match!(palette.ribbon_unselected.base);
+    let ribbon = Style::new().fg(contrasting_fg).on(saturated_bg);
+    vec![
+        Style::new().paint(" "),
+        ribbon.paint(" ".to_string()),
+        ribbon.bold().paint(text.to_string()),
+        ribbon.paint(" ".to_string()),
+    ]
+}
+
 /// Compose the plain-text representation of a key binding as it appears in a
 /// hint, e.g. `^p`, `h|j|k|l`, or `←↓↑→`. This is the value substituted for the
 /// `{key}` placeholder when a custom `key_format` is configured; the styling
@@ -1248,42 +1270,58 @@ fn merge_hint(hints: &mut Vec<Hint>, id: &str, label: &str, keys: &[KeyWithModif
 }
 
 /// Render a hint's styled segments, without tracking consumed keys.
-fn render_hint(
-    parts: &mut Vec<ANSIString<'static>>,
-    keys: &[KeyWithModifier],
-    description: &str,
-    style: &HintStyle,
-) {
+fn render_hint(parts: &mut Vec<ANSIString<'static>>, hint: &Hint, style: &HintStyle) {
     // Optionally collapse hjkl/arrow duplicates down to a single family.
-    let mut keys = filter_direction_keys(keys, style.direction_keys);
+    let mut keys = filter_direction_keys(&hint.keys, style.direction_keys);
     sort_keys(&mut keys, style.key_order);
     let keys = keys.as_slice();
 
-    // Key part: a custom `key_format` (a zjstatus-style format string with a
-    // `{key}` placeholder) takes precedence over the theme-palette default.
-    match style.key_format {
-        Some(fmt) => {
-            let key_text = compose_key_text(keys, style.config);
-            parts.extend(format::render_template(
-                fmt,
-                &[("key", &key_text)],
-                style.config,
-            ));
-        }
+    // A per-hint format overrides the global one; either overrides the theme
+    // palette. An empty value falls back to the palette rather than rendering
+    // nothing, matching how the global options treat empty.
+    let key_format = hint_override(CONFIG_KEY_FORMAT_PREFIX, hint, style.mode, style.config);
+    let key_format = match &key_format {
+        Some(per_hint) => per_hint.as_deref(),
+        None => style.key_format,
+    };
+
+    // Keys can be replaced outright by a fixed string, for hints better
+    // described than enumerated — a chord, a mouse gesture, or a whole family
+    // of keys standing in as `1-9`. An empty value renders no key part at all,
+    // leaving the label to speak for itself.
+    let replacement = hint_override(CONFIG_KEYS_PREFIX, hint, style.mode, style.config);
+    let key_text = match &replacement {
+        Some(fixed) => fixed.clone().unwrap_or_default(),
+        None => compose_key_text(keys, style.config),
+    };
+
+    match key_format {
+        Some(fmt) if !key_text.is_empty() => parts.extend(format::render_template(
+            fmt,
+            &[("key", &key_text)],
+            style.config,
+        )),
+        Some(_) => {}
+        // Real keys keep the modifier grouping the palette styling does;
+        // a replacement is already a finished string.
+        None if replacement.is_some() => parts.extend(style_key_text(&key_text, style.colors)),
         None => parts.extend(style_key_with_modifier(keys, style.colors, style.config)),
     }
 
-    // Description part: likewise overridable via `desc_format` with a `{desc}`
-    // placeholder.
-    match style.desc_format {
-        Some(fmt) => {
-            parts.extend(format::render_template(
-                fmt,
-                &[("desc", description)],
-                style.config,
-            ));
-        }
-        None => parts.extend(style_description(description, style.colors)),
+    // Description part, resolved the same way.
+    let desc_format = hint_override(CONFIG_DESC_FORMAT_PREFIX, hint, style.mode, style.config);
+    let desc_format = match &desc_format {
+        Some(per_hint) => per_hint.as_deref(),
+        None => style.desc_format,
+    };
+
+    match desc_format {
+        Some(fmt) => parts.extend(format::render_template(
+            fmt,
+            &[("desc", &hint.label)],
+            style.config,
+        )),
+        None => parts.extend(style_description(&hint.label, style.colors)),
     }
 }
 
@@ -1704,7 +1742,7 @@ fn render_hints_for_mode(
         .iter()
         .map(|hint| {
             let mut parts = vec![];
-            render_hint(&mut parts, &hint.keys, &hint.label, style);
+            render_hint(&mut parts, hint, style);
             HintPiece {
                 width: visible_width(&parts, style.wide_ambiguous),
                 group: style.hint_order.group(hint),
@@ -2029,6 +2067,44 @@ fn apply_label(
         Some(None) => used.extend(keys.iter().cloned()),
         None => add_hint(hints, keys, id, default, used),
     }
+}
+
+/// Look up a per-hint setting, e.g. `key_format_split_down`.
+///
+/// Tries the most specific key first, so a mode-scoped setting beats a global
+/// one, exactly as labels resolve. A hint can be named by its concept id or by
+/// its label — the latter matters for hints fused under a label you chose,
+/// whose id is that label with a marker prefix and not something anyone wants
+/// to type.
+///
+/// The outer `Option` separates "not set" from set; the inner one is `None`
+/// for an empty value, which each caller reads for itself.
+fn hint_override(
+    prefix: &str,
+    hint: &Hint,
+    mode: &str,
+    config: &BTreeMap<String, String>,
+) -> Option<Option<String>> {
+    let label = config_slug(&hint.label);
+    let value = [
+        format!("{}{}_{}", prefix, mode, hint.id),
+        format!("{}{}_{}", prefix, mode, label),
+        format!("{}{}", prefix, hint.id),
+        format!("{}{}", prefix, label),
+    ]
+    .iter()
+    .find_map(|key| config.get(key))?;
+    Some(Some(value.clone()).filter(|value| !value.is_empty()))
+}
+
+/// A label as it can be written in a config key: `swap layout` -> `swap_layout`.
+fn config_slug(label: &str) -> String {
+    label
+        .trim()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 /// The merge id for a hint whose label the user set explicitly.
@@ -2546,8 +2622,16 @@ mod tests {
         let mode_key = format!("{:?}", mode).to_lowercase();
         let style = HintStyle {
             colors: &colors,
-            key_format: Some("{key} "),
-            desc_format: Some("{desc}"),
+            // Minimal formats keep assertions readable; a test can override
+            // them through config to exercise the real precedence.
+            key_format: config
+                .get("key_format")
+                .map(String::as_str)
+                .or(Some("{key} ")),
+            desc_format: config
+                .get("desc_format")
+                .map(String::as_str)
+                .or(Some("{desc}")),
             spacer: Some("|"),
             discover: config.get("discover_hints").map_or(true, |v| v == "true"),
             direction_keys: DirectionKeys::from_config(
@@ -2820,6 +2904,96 @@ mod tests {
             (key(BareKey::Char('c')), vec![Action::TogglePaneFrames]),
             (key(BareKey::Char('d')), vec![Action::TogglePanePinned]),
         ]
+    }
+
+    #[test]
+    fn a_per_hint_format_overrides_the_global_one() {
+        let keymap = four_hints();
+        let config = &[
+            ("desc_format", "[{desc}]"),
+            ("desc_format_frames", "<{desc}>"),
+        ];
+        assert_eq!(
+            rendered(InputMode::Pane, &keymap, config),
+            "a [close]|b [fullscreen]|c <frames>|d [pin]"
+        );
+    }
+
+    #[test]
+    fn a_per_hint_format_can_be_scoped_to_one_mode() {
+        let keymap = four_hints();
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &keymap,
+                &[("desc_format_pane_frames", "<{desc}>")]
+            ),
+            "a close|b fullscreen|c <frames>|d pin"
+        );
+        // A different mode keeps the global formatting.
+        assert_eq!(
+            rendered(
+                InputMode::Tab,
+                &keymap,
+                &[("desc_format_pane_frames", "<{desc}>")]
+            ),
+            "a close|b fullscreen|c frames|d pin"
+        );
+    }
+
+    #[test]
+    fn keys_can_be_replaced_with_a_fixed_string() {
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[("keys_frames", "1-9")]),
+            "a close|b fullscreen|1-9 frames|d pin"
+        );
+    }
+
+    #[test]
+    fn an_empty_key_replacement_leaves_the_label_alone() {
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[("keys_frames", "")]),
+            "a close|b fullscreen|frames|d pin"
+        );
+    }
+
+    #[test]
+    fn a_replaced_key_is_measured_at_its_real_width() {
+        // The replacement is wider than the key it stands for, so fitting has
+        // to account for it rather than for the original.
+        let wide = rendered(
+            InputMode::Pane,
+            &four_hints(),
+            &[("keys_frames", "mouse wheel"), ("limit", "40")],
+        );
+        assert!(
+            calculate_visible_length(&wide, false) <= 40,
+            "over the limit: {:?}",
+            wide
+        );
+    }
+
+    #[test]
+    fn a_hint_can_be_named_by_its_label_as_well_as_its_id() {
+        // `close_pane` is the id; `close` is what it displays.
+        assert_eq!(
+            rendered(InputMode::Pane, &four_hints(), &[("keys_close", "^w")]),
+            "^w close|b fullscreen|c frames|d pin"
+        );
+    }
+
+    #[test]
+    fn a_relabelled_hint_is_addressable_by_its_new_label() {
+        // Setting a label gives the hint an id of `=<label>`, which nobody
+        // wants to type; the slugged label works instead.
+        assert_eq!(
+            rendered(
+                InputMode::Pane,
+                &four_hints(),
+                &[("label_frames", "swap layout"), ("keys_swap_layout", "><")]
+            ),
+            "a close|b fullscreen|>< swap layout|d pin"
+        );
     }
 
     #[test]
