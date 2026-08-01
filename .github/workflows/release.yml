@@ -99,7 +99,7 @@ jobs:
 
       - name: Generate a changelog
         if: steps.version.outputs.proceed == 'true'
-        uses: orhun/git-cliff-action@d77b37db2e3f7398432d34b72a12aa3e2ba87e51 # v3
+        uses: orhun/git-cliff-action@f50e11560dce63f7c33227798f90b924471a88b5 # v3
         id: git-cliff
         with:
           config: cliff.toml
