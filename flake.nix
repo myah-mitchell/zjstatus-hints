@@ -24,9 +24,28 @@
         overlays = [(import rust-overlay)];
       };
 
-      rustWithWasiTarget = pkgs.rust-bin.stable.latest.default.override {
-        targets = ["wasm32-wasip1"];
-      };
+      # `stable.latest` only resolves as new as whatever the locked
+      # rust-overlay revision knew about — it does not track "actually
+      # latest". If flake.lock goes stale relative to Cargo.toml's
+      # rust-version, this quietly hands cargo a toolchain too old to satisfy
+      # its own MSRV, and the build fails deep in cargo rather than here.
+      # Assert it instead, so the failure names the real cause and the fix.
+      cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+      msrv = cargoToml.package.rust-version;
+
+      rustWithWasiTarget = let
+        toolchain = pkgs.rust-bin.stable.latest.default.override {
+          targets = ["wasm32-wasip1"];
+        };
+      in
+        assert pkgs.lib.assertMsg (builtins.compareVersions toolchain.version msrv >= 0) ''
+          rust-overlay resolves rustc ${toolchain.version} for `stable.latest`,
+          which is older than Cargo.toml's rust-version = "${msrv}".
+          flake.lock's rust-overlay/nixpkgs inputs are stale relative to
+          Cargo.toml. Fix with:
+            nix flake update rust-overlay nixpkgs
+        '';
+        toolchain;
 
       craneLib = (crane.mkLib pkgs).overrideToolchain rustWithWasiTarget;
 
