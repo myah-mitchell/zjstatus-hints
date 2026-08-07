@@ -87,6 +87,22 @@ jobs:
       - name: Report artifact size
         run: ls -lh target/wasm32-wasip1/release/zjstatus-hints.wasm
 
+  # flake.nix resolves its toolchain via rust-bin.stable.latest, which is only
+  # as new as whatever the *locked* rust-overlay revision knew about. If
+  # flake.lock goes stale relative to Cargo.toml's rust-version, `nix build`
+  # quietly hands cargo a toolchain too old to satisfy its own MSRV (#11).
+  # flake.nix asserts this itself, so evaluating any output that touches the
+  # toolchain is enough to catch it — no need to build anything. `drvPath`
+  # forces full derivation instantiation (and so the assert) without
+  # realising it.
+  flake:
+    name: flake (msrv)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - run: nix eval .#packages.x86_64-linux.default.drvPath
+
   # Known vulnerabilities in the dependency tree. Advisories appear without any
   # code changing, so this runs on every push rather than only on updates.
   audit:
