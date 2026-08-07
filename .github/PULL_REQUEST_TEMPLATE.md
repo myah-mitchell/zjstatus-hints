@@ -54,6 +54,8 @@ conventional-commit prefix decides where a change appears in the changelog.
 
   feat:  fix:  docs:  test:  ci:  chore(deps):  refactor:  perf:
 
-Pull requests are squash-merged, so it is the PR title that ends up in the
-changelog. See CONTRIBUTING.md.
+Pull requests are merged with a merge commit, not squashed, so each of your
+commits keeps its own subject and is parsed into the changelog individually —
+not just the PR title. Give each commit a conventional prefix, not only the
+PR title. See CONTRIBUTING.md.
 -->

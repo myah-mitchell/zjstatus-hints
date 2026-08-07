@@ -10,7 +10,7 @@ instead; this fork tracks its own direction and may not take everything.
 
 ## Getting set up
 
-You need Rust 1.84.0 with the `wasm32-wasip1` target. The toolchain is pinned in
+You need Rust 1.96.0 with the `wasm32-wasip1` target. The toolchain is pinned in
 `rust-toolchain.toml`, so rustup will fetch the right one automatically.
 
 ```sh
@@ -62,7 +62,7 @@ never does this for you; see [docs/AUTOMATION.md](docs/AUTOMATION.md).
 
 ## What good changes look like
 
-**Tests.** There are 71 and they run in CI. Anything with logic worth reasoning
+**Tests.** There are 81 and they run in CI. Anything with logic worth reasoning
 about — ordering, fitting, label resolution — should come with coverage. The
 render path is testable end to end: build a synthetic keymap, call
 `render_hints_for_mode`, and assert on the visible text. Look at the existing
@@ -97,8 +97,8 @@ against the options the code actually reads.
 4. Open the pull request. Fill in the template — the "why" matters more than
    the "what", which the diff already shows.
 
-CI runs formatting, clippy, tests, a wasm build, and `cargo audit`. All must
-pass.
+CI runs formatting, clippy, tests, a wasm build, a flake MSRV check, and
+`cargo audit`. All must pass.
 
 Small, focused pull requests are easier to take than large ones. If a change
 grew while you were making it, splitting it is usually worth the effort.

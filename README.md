@@ -183,16 +183,22 @@ For how the repository builds, tests and releases itself, see
 - [x] more advanced mode-specific configuration
 - [x] improved handling of long outputs
 - [x] ability to enable/disable specific hints
-- [ ] shed the unmaintained transitive crates, once Zellij allows it. Three
-      RUSTSEC advisories are open, all warning-level (unmaintained / a
-      Windows-only unsound read) and none reachable in a wasm plugin:
-      `ansi_term` (RUSTSEC-2021-0139) via `zellij-tile-utils`, and `atty`
-      (RUSTSEC-2021-0145, RUSTSEC-2024-0375) via `clap 3` in `zellij-utils`.
+- [ ] shed the unmaintained transitive crates, once Zellij allows it. Five
+      RUSTSEC advisories are open, all warning-level (unmaintained / unsound
+      reads, no vulnerabilities) and none reachable in the actual wasm plugin:
+      `ansi_term` (RUSTSEC-2021-0139) via `zellij-tile-utils`; `atty`
+      (RUSTSEC-2021-0145, RUSTSEC-2024-0375) and `proc-macro-error`
+      (RUSTSEC-2024-0370) via `clap 3`/`clap_derive` in `zellij-utils`
+      (`proc-macro-error` is a proc-macro crate, so it never ships in any
+      compiled output, wasm or host); and `event-listener` (RUSTSEC-2026-0221)
+      via `isahc` in `zellij-utils` — that whole chain (`isahc` → `curl` →
+      `openssl-sys`) is absent from the `wasm32-wasip1` dependency graph
+      entirely, only appearing on the host target that `cargo test` builds.
       **None is removable from here** — swapping our own `ansi_term` for
       `nu-ansi-term` only adds a second ANSI crate, since `zellij-tile-utils`
-      still pulls `ansi_term`, and `atty` only leaves when Zellij moves to
-      clap 4. They clear when Zellij updates; `cargo audit` already passes, as
-      these are warnings, not vulnerabilities.
+      still pulls `ansi_term`, and the `clap 3`/`isahc` advisories only leave
+      when Zellij moves off them. They clear when Zellij updates; `cargo
+      audit` already passes, as these are warnings, not vulnerabilities.
 - [x] reconsider the `select` hint — dropped. It labelled Enter separately in
       seven modes, but Enter and Esc are bound to the identical
       `SwitchToMode "Normal"`, so it spent a hint on a distinction Zellij does
