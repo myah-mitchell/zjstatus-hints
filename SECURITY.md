@@ -75,7 +75,7 @@ public source. If you would rather not trust the published binary, build it
 yourself:
 
 ```sh
-git checkout v0.2.0
+git checkout v0.2.1
 make build
 ```
 

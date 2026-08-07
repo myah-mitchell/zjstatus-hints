@@ -44,6 +44,32 @@ jobs:
           toolchain: "1.96.0"
           target: wasm32-wasip1
 
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+
+      # `nix flake update` (no args) moves every input, not just rust-overlay —
+      # this is what stops flake.lock going stale relative to Cargo.toml's
+      # rust-version the way it did in #11, and keeps crane/nixpkgs/etc. fresh
+      # the same way `cargo update` below keeps Cargo.lock fresh.
+      - name: Update flake inputs
+        id: flake
+        run: |
+          set -euo pipefail
+          nix flake update
+          if git diff --quiet -- flake.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Confirms the update did not leave rust-overlay resolving a toolchain
+      # too old for Cargo.toml's rust-version — flake.nix asserts that itself
+      # (see #11), so a stale resolution fails here with a clear message
+      # instead of silently landing in the PR.
+      - name: Verify the flake still builds
+        if: steps.flake.outputs.changed == 'true'
+        run: nix build .#default --no-link --print-build-logs
+
       - name: Record current versions
         id: before
         run: |
@@ -67,8 +93,14 @@ jobs:
         id: deps
         run: python3 .github/scripts/check_deps.py '${{ steps.before.outputs.versions }}'
 
+      # A flake-only change bumps the version too, same as a dependency
+      # change: it still goes through test + build below before anything
+      # opens, and treating it as a separate, unversioned class of update
+      # would double the branching in every step from here on for little
+      # gain — a rebuild on a newer toolchain is a reasonable thing to
+      # release on its own.
       - name: Bump patch version
-        if: steps.deps.outputs.changed == 'true'
+        if: steps.deps.outputs.changed == 'true' || steps.flake.outputs.changed == 'true'
         id: bump
         run: |
           set -euo pipefail
@@ -86,7 +118,7 @@ jobs:
           cargo update --workspace --offline || cargo update --workspace
 
       - name: Ensure OpenSSL headers
-        if: steps.deps.outputs.changed == 'true'
+        if: steps.deps.outputs.changed == 'true' || steps.flake.outputs.changed == 'true'
         run: |
           if ! pkg-config --exists openssl; then
             sudo apt-get update && sudo apt-get install -y libssl-dev
@@ -95,17 +127,17 @@ jobs:
       # Proven green before the PR is opened, so a red PR means CI found
       # something this job did not.
       - name: Test
-        if: steps.deps.outputs.changed == 'true'
+        if: steps.deps.outputs.changed == 'true' || steps.flake.outputs.changed == 'true'
         run: cargo test --all-features
 
       - name: Build
-        if: steps.deps.outputs.changed == 'true'
+        if: steps.deps.outputs.changed == 'true' || steps.flake.outputs.changed == 'true'
         run: cargo build --release --target=wasm32-wasip1
 
       - name: Open or update the pull request
-        if: steps.deps.outputs.changed == 'true'
+        if: steps.deps.outputs.changed == 'true' || steps.flake.outputs.changed == 'true'
         id: pr
-        uses: peter-evans/create-pull-request@v8 # TODO: pin to a SHA
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
         with:
           token: ${{ secrets.AUTOMATION_TOKEN }}
           branch: ${{ env.BRANCH }}
@@ -125,6 +157,7 @@ jobs:
             **v${{ steps.bump.outputs.version }}** and moves `latest`.
 
             ${{ steps.deps.outputs.summary }}
+            ${{ steps.flake.outputs.changed == 'true' && '`flake.lock` was refreshed (`nix flake update`) and confirmed to still build.' || '' }}
 
             <details>
             <summary>What ran before this was opened</summary>
@@ -132,6 +165,7 @@ jobs:
             - `cargo update` — semver-compatible updates only
             - `cargo test --all-features`
             - `cargo build --release --target=wasm32-wasip1`
+            ${{ steps.flake.outputs.changed == 'true' && '- `nix flake update`, then `nix build .#default` to confirm it still resolves' || '' }}
 
             </details>
 

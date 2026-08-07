@@ -1,0 +1,50 @@
+---
+name: Cleanup caches
+
+# A closed PR's caches (Swatinem/rust-cache, the Nix installer cache) do not
+# go away when its branch is deleted — caches are stored independently of the
+# ref that created them. Every branch this repo cycles through (dependabot's
+# two ecosystems, this workflow's own updates) leaves ~800 MiB of dead cache
+# behind otherwise, and the repo has a flat 10 GiB cap: once that fills,
+# GitHub starts evicting the *most* useful ones (main's) under LRU pressure
+# rather than the dead ones.
+on:
+  pull_request:
+    types: [closed]
+
+# Deleting a cache needs actions:write; nothing else here touches the repo.
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    name: cleanup
+    runs-on: ubuntu-latest
+    steps:
+      # Two refs, because ci.yml caches under both: the merge ref from
+      # pull_request-triggered runs, and the branch's own ref from
+      # push-triggered runs on the same branch. Missing either leaves half
+      # the PR's caches behind.
+      #
+      # Forked-repo PRs run with a read-only GITHUB_TOKEN regardless of the
+      # permissions above, so this step no-ops there rather than failing the
+      # job — acceptable for a single-maintainer repo where fork PRs are rare
+      # and reviewed by hand anyway.
+      - name: Delete this PR's caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MERGE_REF: refs/pull/${{ github.event.pull_request.number }}/merge
+          HEAD_REF: refs/heads/${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          for ref in "$MERGE_REF" "$HEAD_REF"; do
+            ids="$(gh cache list --repo "$REPO" --ref "$ref" --json id --jq '.[].id')"
+            if [ -z "$ids" ]; then
+              echo "No caches for $ref"
+              continue
+            fi
+            echo "$ids" | while read -r id; do
+              gh cache delete "$id" --repo "$REPO"
+            done
+          done

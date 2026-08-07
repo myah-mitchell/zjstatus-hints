@@ -13,7 +13,7 @@ minutes.
  nightly (04:00 UTC)                you                         result
  ────────────────────               ───                         ──────
  update-deps.yml
-   cargo update
+   cargo update, nix flake update
    test + build
    bump patch version
    open pull request  ──────────►  email arrives
@@ -47,9 +47,10 @@ Your only interaction is the Merge click.
 | File | Runs on | Does |
 |---|---|---|
 | `ci.yml` | every push and pull request | rustfmt, clippy, tests, wasm build, flake MSRV check, `cargo audit` |
-| `update-deps.yml` | 04:00 UTC daily, or manually | updates dependencies, opens/updates one pull request |
+| `update-deps.yml` | 04:00 UTC daily, or manually | updates Cargo **and** flake.lock dependencies, opens/updates one pull request |
 | `nightly.yml` | 05:00 UTC daily, pushes to `main`, or manually | rebuilds `main`, moves the `nightly` release |
 | `release.yml` | pushes to `main`, `v*.*.*` tags, or manually | publishes a release when `Cargo.toml` names an untagged version |
+| `cleanup-caches.yml` | a pull request closes | deletes that PR's Actions caches |
 
 ### Tags and releases
 
@@ -89,6 +90,16 @@ held back. When a Zellij crate has a new minor, the pull request is labelled
 **`needs-zellij-upgrade`** and the workflow run carries a warning. Upgrade
 Zellij first, then bump the crate by hand — that is the one update where
 merging on a green build is not enough.
+
+**`flake.lock` moves alongside it.** `nix flake update` has no equivalent
+restraint — Nix flake inputs carry no semver range to stay within, so every
+input (`nixpkgs`, `rust-overlay`, `crane`, …) always moves to whatever is
+current. The workflow only opens the pull request after confirming
+`nix build .#default` still resolves a toolchain meeting `Cargo.toml`'s
+`rust-version` (see `flake.nix`, and [#11][gh-11]) — a failure there fails the
+run instead of landing a broken lock.
+
+[gh-11]: https://github.com/myah-mitchell/zjstatus-hints/issues/11
 
 ## First-time setup
 
@@ -201,19 +212,17 @@ locally instead.
 
 ## Maintenance
 
-**Pin the actions.** Three are pinned to commit SHAs; three carry a
-`# TODO: pin to a SHA` comment because they were added without network access
-to verify one. A version tag can be moved by whoever controls the action, so
-pinning is worth doing:
+**Pin the actions.** All of them are pinned to commit SHAs — a version tag can
+be moved by whoever controls the action, so an unpinned `uses:` is a supply
+chain gap. If a new workflow step adds one without network access to verify a
+SHA, it should carry a `# TODO: pin to a SHA` comment until this fixes it:
 
 ```sh
-gh api repos/Swatinem/rust-cache/commits/v2 --jq .sha
-gh api repos/rustsec/audit-check/commits/v2 --jq .sha
-gh api repos/peter-evans/create-pull-request/commits/v7 --jq .sha
+gh api repos/<owner>/<repo>/commits/<tag> --jq .sha
 ```
 
-Then replace `@v2` with `@<sha> # v2`. Dependabot updates the pinned ones
-monthly.
+Then replace `@<tag>` with `@<sha> # <tag>`, keeping the version in the
+trailing comment. Dependabot updates the pinned ones monthly.
 
 **Rotate the token** when the expiry email arrives — regenerate and update the
 `AUTOMATION_TOKEN` secret. `update-deps.yml` fails loudly if it lapses.
