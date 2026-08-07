@@ -46,7 +46,7 @@ Your only interaction is the Merge click.
 
 | File | Runs on | Does |
 |---|---|---|
-| `ci.yml` | every push and pull request | rustfmt, clippy, tests, wasm build, `cargo audit` |
+| `ci.yml` | every push and pull request | rustfmt, clippy, tests, wasm build, flake MSRV check, `cargo audit` |
 | `update-deps.yml` | 04:00 UTC daily, or manually | updates dependencies, opens/updates one pull request |
 | `nightly.yml` | 05:00 UTC daily, pushes to `main`, or manually | rebuilds `main`, moves the `nightly` release |
 | `release.yml` | pushes to `main`, `v*.*.*` tags, or manually | publishes a release when `Cargo.toml` names an untagged version |
@@ -136,7 +136,7 @@ missing, rather than opening a pull request whose checks can never pass.
 - Tick **Require a pull request before merging**
   - Required approvals: **0**
 - Tick **Require status checks to pass**
-  - Add: `rustfmt`, `clippy`, `test`, `build (wasm)`
+  - Add: `rustfmt`, `clippy`, `test`, `build (wasm)`, `flake (msrv)`
 - Leave **Require branches to be up to date** off, or a busy day means
   rebasing before every merge.
 
