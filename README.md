@@ -121,12 +121,13 @@ load_plugins {
 
 ### Release channels
 
-Two channels are published:
+Three channels are published:
 
 | Channel | Contents |
 |---|---|
 | `latest` | Tagged releases. What the URL above resolves to. |
 | `nightly` | Rebuilt from `main` every night, tests green. Prerelease. |
+| `zellij-<line>` | The newest release built for a given Zellij minor, e.g. `zellij-0.44`. |
 
 Zellij caches remote plugins by URL, so pointing the config at the nightly URL
 will keep serving whatever it downloaded first. To track nightlies, fetch into
@@ -135,6 +136,46 @@ the plugin path instead and start a new session:
 ```sh
 make nightly   # or: make latest
 ```
+
+#### Matching your Zellij version
+
+`latest` is not always built for the Zellij you run — this plugin's own
+version and the Zellij it targets move independently (see
+[Versioning](#versioning) below). Mixing them is silent, not a build error:
+Zellij's plugin boundary decodes a binding's actions with
+`.filter_map(|a| a.try_into().ok())`, so an action a mismatched plugin does
+not recognise is just dropped — hints render with the wrong label rather than
+failing to load.
+
+Check what your build targets, or fetch one for the Zellij you actually run:
+
+```sh
+zellij --version                 # e.g. 0.44.3
+make zellij VERSION=0.44         # newest release built for that line
+```
+
+`zellij-<line>` always resolves to the newest `zjstatus-hints` release built
+for that Zellij minor, however many versions have shipped since — the same
+moving-pointer pattern as `latest` and `nightly`, just scoped to one Zellij
+line instead of to everything.
+
+### Versioning
+
+`zjstatus-hints`'s own version and the Zellij it targets move on separate
+tracks, on purpose: this fork ships its own features and fixes on its own
+schedule, unrelated to when Zellij releases. Folding the two into one number
+would make a plain bugfix release indistinguishable from a Zellij compatibility
+bump.
+
+| `zjstatus-hints` | Targets Zellij |
+|---|---|
+| 0.2.x (current) | 0.44.x |
+
+Bumping past a Zellij minor is deliberately not automatic — see
+[docs/AUTOMATION.md](docs/AUTOMATION.md) for why and how that update is
+proposed instead of applied. Once it lands, this table's current row moves to
+the new line, and the previous line's last compatible release stays reachable
+forever at its own `zellij-<line>` tag.
 
 Finally, configure zjstatus to display the hints in your default layout (`layouts/default.kdl`):
 
