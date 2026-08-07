@@ -57,8 +57,9 @@ does not recognise is silently **dropped**, and the binding arrives truncated.
 The symptom is a hint showing the wrong label — everything compiles, tests pass,
 and nothing logs an error.
 
-So if you upgrade Zellij, bump the crates to match. The automation deliberately
-never does this for you; see [docs/AUTOMATION.md](docs/AUTOMATION.md).
+So if you upgrade Zellij, bump the crates to match. `update-deps.yml` proposes
+this as its own pull request once a new Zellij minor is out, but deliberately
+never merges it for you — see [docs/AUTOMATION.md](docs/AUTOMATION.md).
 
 ## What good changes look like
 

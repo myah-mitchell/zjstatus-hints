@@ -3,7 +3,7 @@ WASM    := target/$(TARGET)/release/zjstatus-hints.wasm
 PLUGIN  := $(HOME)/.local/share/zellij/plugins/zjstatus-hints.wasm
 REPO    := myah-mitchell/zjstatus-hints
 
-.PHONY: build install dev test check nightly latest
+.PHONY: build install dev test check nightly latest zellij
 
 # Build the release wasm.
 build:
@@ -49,4 +49,23 @@ latest:
 		"https://github.com/$(REPO)/releases/latest/download/zjstatus-hints.wasm"
 	@mv "$(PLUGIN).tmp" "$(PLUGIN)"
 	@echo "Installed latest -> $(PLUGIN)"
+	@echo "Start a new Zellij session to load it."
+
+# `latest` tracks the newest zjstatus-hints, which is not always the newest
+# release built for the Zellij you actually run — zellij-tile only moves past
+# a minor deliberately (see docs/AUTOMATION.md). `zellij-<line>` is a tag that
+# always points at the newest release built for that Zellij minor, so this
+# fetches the right one regardless of what `latest` currently is.
+#
+# Usage: make zellij VERSION=0.44
+zellij:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make zellij VERSION=0.44   (your Zellij's major.minor)" >&2; \
+		exit 1; \
+	fi
+	@echo "Fetching the newest release for Zellij $(VERSION).x from $(REPO)…"
+	@curl -fsSL -o "$(PLUGIN).tmp" \
+		"https://github.com/$(REPO)/releases/download/zellij-$(VERSION)/zjstatus-hints.wasm"
+	@mv "$(PLUGIN).tmp" "$(PLUGIN)"
+	@echo "Installed -> $(PLUGIN)"
 	@echo "Start a new Zellij session to load it."
