@@ -130,3 +130,56 @@ jobs:
           make_latest: true
           files: |
             ./target/wasm32-wasip1/release/zjstatus-hints.wasm
+
+      # `latest` tracks this release, which is not always built for the
+      # Zellij a given user runs - zellij-tile only moves past a minor
+      # deliberately (see the zellij-upgrade job in update-deps.yml). This
+      # gives every Zellij line its own stable pointer: `make zellij
+      # VERSION=0.44` (see the Makefile) always resolves to the newest
+      # release built for that line, however many versions of
+      # zjstatus-hints itself have shipped since.
+      - name: Determine the Zellij compatibility line
+        if: steps.version.outputs.proceed == 'true'
+        id: zellij
+        run: |
+          set -euo pipefail
+          req="$(grep -m1 '^zellij-tile = ' Cargo.toml | cut -d'"' -f2)"
+          echo "line=$(echo "$req" | cut -d. -f1-2)" >> "$GITHUB_OUTPUT"
+
+      - name: Move the zellij-<line> compatibility tag
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "zellij-${{ steps.zellij.outputs.line }}"
+          git push -f origin "zellij-${{ steps.zellij.outputs.line }}"
+
+      # A release, not a bare tag, because `releases/download/<tag>/…` needs
+      # an uploaded asset to serve from - a tag alone has nowhere for
+      # `make zellij` to fetch. Moved rather than added to, same as
+      # `nightly`, so it always names the current build for this line.
+      - name: Publish the zellij-<line> compatibility release
+        if: steps.version.outputs.proceed == 'true'
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: "zellij-${{ steps.zellij.outputs.line }}"
+          name: "Zellij ${{ steps.zellij.outputs.line }}.x"
+          body: |
+            Always the newest zjstatus-hints release built against Zellij
+            ${{ steps.zellij.outputs.line }}.x. Currently
+            **${{ steps.version.outputs.tag }}**.
+
+            Not a distinct release - an alias, moved here each time a new
+            ${{ steps.zellij.outputs.line }}.x-compatible version ships. See
+            [docs/AUTOMATION.md](https://github.com/${{ github.repository }}/blob/main/docs/AUTOMATION.md).
+          # Not `latest`, deliberately - this is a compatibility pointer, and
+          # `make_latest: true` here would fight the real latest release for
+          # what `/releases/latest/` resolves to.
+          draft: false
+          prerelease: false
+          make_latest: false
+          files: |
+            ./target/wasm32-wasip1/release/zjstatus-hints.wasm

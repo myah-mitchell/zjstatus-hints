@@ -10,7 +10,10 @@ Zellij breaks hints silently rather than failing to build.
 That leaves one gap: nobody is told a new minor exists. This script queries
 crates.io for each direct dependency, reports the versions cargo took, and
 flags the ones held back — loudly for the Zellij crates, since acting on
-those means upgrading Zellij first.
+those means upgrading Zellij first. It also reports exactly which version was
+held back for those two crates specifically, so a caller can propose the bump
+itself (see the zellij-upgrade job in update-deps.yml) without re-querying
+crates.io.
 
 Writes a markdown summary to stdout and sets outputs on $GITHUB_OUTPUT.
 """
@@ -101,6 +104,10 @@ def main() -> int:
     updated: list[str] = []
     held_back: list[str] = []
     zellij_minor_available = False
+    # Latest version available for each Zellij crate that is held back a
+    # minor or more, so a caller can bump Cargo.toml's requirement to exactly
+    # this rather than re-querying crates.io itself.
+    zellij_targets: dict[str, str] = {}
 
     for crate in sorted(deps):
         was, now = before.get(crate), after.get(crate)
@@ -114,6 +121,7 @@ def main() -> int:
             note = ""
             if crate in PINNED_TO_ZELLIJ:
                 zellij_minor_available = True
+                zellij_targets[crate] = latest
                 note = " — **upgrade Zellij first**"
             held_back.append(f"| `{crate}` | {now} | {latest}{note} |")
 
@@ -161,6 +169,10 @@ def main() -> int:
             handle.write(f"changed={'true' if updated else 'false'}\n")
             handle.write(
                 f"zellij_minor_available={'true' if zellij_minor_available else 'false'}\n"
+            )
+            handle.write(f"zellij_tile_latest={zellij_targets.get('zellij-tile', '')}\n")
+            handle.write(
+                f"zellij_tile_utils_latest={zellij_targets.get('zellij-tile-utils', '')}\n"
             )
             handle.write("summary<<SUMMARY_EOF\n")
             handle.write(summary + "\n")
