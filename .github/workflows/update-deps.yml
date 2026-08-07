@@ -33,7 +33,7 @@ jobs:
             exit 1
           fi
 
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
         with:
           ref: main
           token: ${{ secrets.AUTOMATION_TOKEN }}
