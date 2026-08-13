@@ -30,6 +30,12 @@ protect_breaking_commits = true
 filter_commits = false
 topo_order = false
 sort_commits = "oldest"
+# Only vX.Y.Z tags mark a release boundary/heading. Without this, the
+# zellij-<line> compatibility tag (moved onto every release commit, see
+# release.yml) and `nightly` are fair game too, and git-cliff will happily
+# label a release after whichever of them it picks - e.g. v0.2.2's notes
+# came out headed "## zellij-0.44" instead of "## 0.2.2".
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
 
 # Commit subjects are matched in order; the first match wins.
 commit_parsers = [
