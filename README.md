@@ -174,7 +174,7 @@ bump.
 
 | `zjstatus-hints` | Targets Zellij |
 |---|---|
-| 0.2.x (current) | 0.44.x |
+| 0.3.x (current) | 0.44.x |
 
 Bumping past a Zellij minor is deliberately not automatic — see
 [docs/AUTOMATION.md](docs/AUTOMATION.md) for why and how that update is
@@ -225,10 +225,6 @@ For how the repository builds, tests and releases itself, see
 
 ## TODO
 
-- [x] configurable colors/formatting
-- [x] more advanced mode-specific configuration
-- [x] improved handling of long outputs
-- [x] ability to enable/disable specific hints
 - [ ] shed the unmaintained transitive crates, once Zellij allows it. Five
       RUSTSEC advisories are open, all warning-level (unmaintained / unsound
       reads, no vulnerabilities) and none reachable in the actual wasm plugin:
@@ -245,10 +241,6 @@ For how the repository builds, tests and releases itself, see
       still pulls `ansi_term`, and the `clap 3`/`isahc` advisories only leave
       when Zellij moves off them. They clear when Zellij updates; `cargo
       audit` already passes, as these are warnings, not vulnerabilities.
-- [x] reconsider the `select` hint — dropped. It labelled Enter separately in
-      seven modes, but Enter and Esc are bound to the identical
-      `SwitchToMode "Normal"`, so it spent a hint on a distinction Zellij does
-      not make. Both keys now form one `mode_normal` hint.
 
 ## Contributing
 
