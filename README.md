@@ -7,7 +7,7 @@ A [Zellij](https://github.com/zellij-org/zellij) plugin that displays context-aw
 > zjstatus; this fork keeps that and adds a configuration layer on top — see
 > [What this fork adds](#what-this-fork-adds).
 
-![2025-06-06_16-23-55_region](https://github.com/user-attachments/assets/cfb93423-f37c-410a-aca9-a49290312d0e)
+![zjstatus-hints example](docs/zjstatus-hints-example.png)
 
 https://github.com/user-attachments/assets/940a31a0-86de-469d-89e2-dab18a1aaca8
 
