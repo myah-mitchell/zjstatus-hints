@@ -22,6 +22,8 @@ Every option the plugin reads, with its default. Follow the links for the detail
 - `color_<name>`: Define a color alias referenced as `$name` in the format strings above
 - `key_alias_<name>`: Replace a key's name with a symbol (e.g. `key_alias_enter "↵"`); see [Key aliases](styling.md#key-aliases)
 - `mod_alias_<name>`: Replace a modifier's name with a symbol (e.g. `mod_alias_ctrl "^"`); see [Modifier aliases](styling.md#modifier-aliases)
+- `chord_mods_<name>`: The modifier combination for a chord alias (e.g. `chord_mods_leader "ctrl+alt+super+shift"`); see [Chord aliases](styling.md#chord-aliases)
+- `chord_alias_<name>`: The symbol shown instead of that combination (e.g. `chord_alias_leader "&"`); see [Chord aliases](styling.md#chord-aliases)
 - `label_<id>`: Override or hide the label of any hint, curated or discovered (e.g. `label_split_down "split ↓"`); see [Labels](labels.md#labels)
 - `label_<mode>_<id>`: The same, scoped to one mode (e.g. `label_locked_mode_normal "unlock"`); see [Per-mode labels](labels.md#per-mode-labels)
 - `key_format_<id>` / `desc_format_<id>`: Format strings for a single hint, overriding the global ones; see [Styling one hint](styling.md#styling-one-hint)

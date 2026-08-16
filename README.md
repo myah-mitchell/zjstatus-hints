@@ -110,6 +110,11 @@ plugins {
         // Likewise for modifiers: show Ctrl as ^ and Alt as ⌥.
         mod_alias_ctrl "^"
         mod_alias_alt  "⌥"
+
+        // Collapse a custom leader key's full modifier chord to one symbol
+        // (see docs/styling.md#chord-aliases).
+        chord_mods_leader  "ctrl+alt+super+shift"
+        chord_alias_leader "&"
     }
 }
 
