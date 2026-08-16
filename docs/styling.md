@@ -169,6 +169,30 @@ followed by a space (`Ctrl hk`), while a symbol (`^`) hugs them (`^hk`). This is
 decided by the last character, so you get the natural spacing either way without
 configuring it.
 
+## Chord aliases
+
+If you've remapped a physical key to send an unusual modifier combination as a
+personal leader key — e.g. `Ctrl+Alt+Super+Shift`, chosen because it collides
+with nothing else — spelling that combination out on every hint is excessive.
+`chord_mods_<name>` / `chord_alias_<name>` collapse it to one symbol instead:
+
+```kdl
+chord_mods_leader  "ctrl+alt+super+shift"
+chord_alias_leader "&"
+```
+
+Turning `Ctrl+Alt+Super+Shift p` into `&p`.
+
+- `<name>` is chosen by you, and only pairs a `chord_mods_<name>` with its
+  `chord_alias_<name>` — it isn't shown anywhere.
+- List the modifiers in `chord_mods_<name>` separated by `+`, using the same
+  four names as [modifier aliases](#modifier-aliases): `ctrl`, `alt`, `shift`,
+  `super` (case-insensitive).
+- Matches only the *exact* combination — a hint bound to just part of a chord
+  (e.g. `Ctrl` alone) renders normally.
+- Define more than one pair to alias more than one custom chord.
+- A `chord_mods_<name>` with no matching `chord_alias_<name>` has no effect.
+
 ## A complete alias set
 
 A full set using only standard Unicode — no Nerd Font required, and no private-use

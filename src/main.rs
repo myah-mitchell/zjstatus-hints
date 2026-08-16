@@ -97,6 +97,8 @@ const CONFIG_DESC_FORMAT: &str = "desc_format";
 const CONFIG_HINT_SPACER: &str = "hint_spacer";
 const CONFIG_KEY_ALIAS_PREFIX: &str = "key_alias_";
 const CONFIG_MOD_ALIAS_PREFIX: &str = "mod_alias_";
+const CONFIG_CHORD_MODS_PREFIX: &str = "chord_mods_";
+const CONFIG_CHORD_ALIAS_PREFIX: &str = "chord_alias_";
 const CONFIG_LABEL_PREFIX: &str = "label_";
 // Per-hint overrides of the global styling, keyed the same way labels are.
 const CONFIG_KEY_FORMAT_PREFIX: &str = "key_format_";
@@ -884,14 +886,18 @@ fn modifier_display(modifier: KeyModifier, config: &BTreeMap<String, String>) ->
 /// The prefix shown before a group's keys, including its trailing separator. A
 /// word-like modifier (`Ctrl`) is followed by a space (`Ctrl h`); a symbol
 /// alias (`^`) hugs the keys (`^h`). An empty modifier set yields no prefix.
+/// A group whose modifiers exactly match a configured chord (see
+/// `chord_alias`) uses that alias in place of the per-modifier names.
 fn group_prefix(modifiers: &[KeyModifier], config: &BTreeMap<String, String>) -> String {
     if modifiers.is_empty() {
         return String::new();
     }
-    let joined: String = modifiers
-        .iter()
-        .map(|m| modifier_display(*m, config))
-        .collect();
+    let joined = chord_alias(modifiers, config).unwrap_or_else(|| {
+        modifiers
+            .iter()
+            .map(|m| modifier_display(*m, config))
+            .collect()
+    });
     if joined
         .chars()
         .next_back()
@@ -901,6 +907,49 @@ fn group_prefix(modifiers: &[KeyModifier], config: &BTreeMap<String, String>) ->
     } else {
         joined
     }
+}
+
+/// Parse one of the four modifier names accepted by `mod_alias_<name>`
+/// (`ctrl`, `alt`, `shift`, `super`) back into a `KeyModifier`.
+fn parse_modifier_name(name: &str) -> Option<KeyModifier> {
+    match name.trim().to_lowercase().as_str() {
+        "ctrl" => Some(KeyModifier::Ctrl),
+        "alt" => Some(KeyModifier::Alt),
+        "shift" => Some(KeyModifier::Shift),
+        "super" => Some(KeyModifier::Super),
+        _ => None,
+    }
+}
+
+/// Parse a `chord_mods_<name>` value, e.g. `"ctrl+alt+super+shift"`, into the
+/// set of modifiers it names. `None` if any token is unrecognized, so a typo
+/// silently disables that one chord rather than matching the wrong
+/// combination.
+fn parse_chord_mods(value: &str) -> Option<BTreeSet<KeyModifier>> {
+    value.split('+').map(parse_modifier_name).collect()
+}
+
+/// Look up a configured chord alias for an exact modifier combination. Named
+/// pairs are set via `chord_mods_<name>` (the combination) and
+/// `chord_alias_<name>` (the symbol shown instead), letting a custom leader
+/// key's full chord collapse to one glyph everywhere it appears, e.g. mapping
+/// `Ctrl+Alt+Super+Shift` to `&`. A `chord_mods_<name>` with no matching
+/// `chord_alias_<name>` has no effect. Matches only the exact set — a hint
+/// bound to part of the chord is unaffected.
+fn chord_alias(modifiers: &[KeyModifier], config: &BTreeMap<String, String>) -> Option<String> {
+    if modifiers.is_empty() {
+        return None;
+    }
+    let wanted: BTreeSet<KeyModifier> = modifiers.iter().copied().collect();
+    config
+        .iter()
+        .filter_map(|(k, v)| Some((k.strip_prefix(CONFIG_CHORD_MODS_PREFIX)?, v)))
+        .find(|(_, mods)| parse_chord_mods(mods).as_ref() == Some(&wanted))
+        .and_then(|(name, _)| {
+            config
+                .get(&format!("{}{}", CONFIG_CHORD_ALIAS_PREFIX, name))
+                .cloned()
+        })
 }
 
 /// Render a bare key, substituting a configured alias symbol when one is set.
@@ -2970,6 +3019,108 @@ mod tests {
             calculate_visible_length(&wide, false) <= 40,
             "over the limit: {:?}",
             wide
+        );
+    }
+
+    #[test]
+    fn a_chord_alias_replaces_its_exact_modifier_combination() {
+        // A custom leader key programmed to send Ctrl+Alt+Shift at once
+        // should render as one symbol, not three modifier names.
+        let keymap = vec![(
+            KeyWithModifier::new(BareKey::Char('p'))
+                .with_ctrl_modifier()
+                .with_alt_modifier()
+                .with_shift_modifier(),
+            vec![Action::CloseFocus],
+        )];
+        let config = &[
+            ("chord_mods_leader", "ctrl+alt+shift"),
+            ("chord_alias_leader", "&"),
+        ];
+        assert_eq!(rendered(InputMode::Pane, &keymap, config), "&p close");
+    }
+
+    #[test]
+    fn a_chord_alias_ignores_a_partial_modifier_match() {
+        // Only Ctrl is held, not the full chord, so the normal modifier name
+        // is shown rather than the alias.
+        let keymap = vec![(ctrl('p'), vec![Action::CloseFocus])];
+        let config = &[
+            ("chord_mods_leader", "ctrl+alt+shift"),
+            ("chord_alias_leader", "&"),
+        ];
+        assert_eq!(rendered(InputMode::Pane, &keymap, config), "Ctrl p close");
+    }
+
+    #[test]
+    fn multiple_chords_apply_independently() {
+        let keymap = vec![
+            (
+                KeyWithModifier::new(BareKey::Char('p'))
+                    .with_ctrl_modifier()
+                    .with_alt_modifier(),
+                vec![Action::CloseFocus],
+            ),
+            (
+                KeyWithModifier::new(BareKey::Char('t'))
+                    .with_ctrl_modifier()
+                    .with_shift_modifier(),
+                vec![Action::TogglePaneFrames],
+            ),
+        ];
+        let config = &[
+            ("chord_mods_one", "ctrl+alt"),
+            ("chord_alias_one", "&"),
+            ("chord_mods_two", "ctrl+shift"),
+            ("chord_alias_two", "%"),
+        ];
+        assert_eq!(
+            rendered(InputMode::Pane, &keymap, config),
+            "&p close|%t frames"
+        );
+    }
+
+    #[test]
+    fn a_chord_alias_is_measured_at_its_real_width() {
+        // The alias is narrower than the spelled-out chord, so a limit that
+        // just fits "&p close" (8 columns) would drop this hint entirely if
+        // fitting were still measuring the unaliased modifier names.
+        let keymap = vec![(
+            KeyWithModifier::new(BareKey::Char('p'))
+                .with_ctrl_modifier()
+                .with_alt_modifier()
+                .with_shift_modifier()
+                .with_super_modifier(),
+            vec![Action::CloseFocus],
+        )];
+        let text = rendered(
+            InputMode::Pane,
+            &keymap,
+            &[
+                ("chord_mods_leader", "ctrl+alt+shift+super"),
+                ("chord_alias_leader", "&"),
+                ("limit", "8"),
+            ],
+        );
+        assert_eq!(text, "&p close");
+    }
+
+    #[test]
+    fn an_unrecognized_chord_mods_token_disables_that_chord() {
+        let keymap = vec![(ctrl('p'), vec![Action::CloseFocus])];
+        let config = &[
+            ("chord_mods_leader", "ctrl+foo"),
+            ("chord_alias_leader", "&"),
+        ];
+        assert_eq!(rendered(InputMode::Pane, &keymap, config), "Ctrl p close");
+    }
+
+    #[test]
+    fn a_chord_mods_without_a_paired_alias_has_no_effect() {
+        let keymap = vec![(ctrl('p'), vec![Action::CloseFocus])];
+        assert_eq!(
+            rendered(InputMode::Pane, &keymap, &[("chord_mods_leader", "ctrl")]),
+            "Ctrl p close"
         );
     }
 
