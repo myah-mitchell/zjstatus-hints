@@ -31,7 +31,7 @@ behaviour and builds a configuration layer over it:
   pinned order for the hints themselves
 - **[Fitting](docs/fitting.md)** — drop whole hints to fit the terminal as it
   narrows, in an order you choose, with an optional indicator for what was cut
-- **Zellij 0.44** support
+- **Zellij 0.45** support
 
 Four options upstream, around two dozen here — the full list is in the
 [configuration reference](docs/configuration.md).
@@ -168,18 +168,19 @@ line instead of to everything.
 
 `zjstatus-hints`'s own version and the Zellij it targets move on separate
 tracks, on purpose: this fork ships its own features and fixes on its own
-schedule, unrelated to when Zellij releases. Folding the two into one number
-would make a plain bugfix release indistinguishable from a Zellij compatibility
-bump.
+patch-level schedule, unrelated to when Zellij releases. A **minor** version
+bump is reserved for the other track — it marks a move to a new Zellij line,
+so a plain bugfix release is never mistaken for a Zellij compatibility bump.
 
 | `zjstatus-hints` | Targets Zellij |
 |---|---|
-| 0.3.x (current) | 0.44.x |
+| 0.3.x | 0.44.x |
+| 0.4.x (current) | 0.45.x |
 
 Bumping past a Zellij minor is deliberately not automatic — see
 [docs/AUTOMATION.md](docs/AUTOMATION.md) for why and how that update is
-proposed instead of applied. Once it lands, this table's current row moves to
-the new line, and the previous line's last compatible release stays reachable
+proposed instead of applied. Once it lands, this table gets a new row for the
+new line, and the previous line's last compatible release stays reachable
 forever at its own `zellij-<line>` tag.
 
 Finally, configure zjstatus to display the hints in your default layout (`layouts/default.kdl`):
